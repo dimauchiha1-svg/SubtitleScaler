@@ -1,0 +1,82 @@
+name: Build SubtitleScaler
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      dump:
+        description: "Писать структуру меню в лог (отладка путей к элементам)"
+        type: boolean
+        default: false
+      menu:
+        description: "Собрать меню для SKSE Menu Framework"
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enable MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Fetch SKSE Menu Framework SDK
+        id: sdk
+        shell: pwsh
+        run: |
+          $menu = "OFF"
+          $sdk = ""
+          if ("${{ inputs.menu }}" -ne "false") {
+            git clone --depth 1 https://github.com/Thiago099/SKSE-Menu-Framework-SDK.git sdk
+            if ($LASTEXITCODE -eq 0) {
+              $menu = "ON"
+              $sdk = "$env:GITHUB_WORKSPACE/sdk"
+              Write-Host "SDK files:"
+              Get-ChildItem -Path sdk -Recurse -Include SKSEMenuFramework.* | ForEach-Object { Write-Host $_.FullName }
+            } else {
+              Write-Host "::warning::Не удалось скачать SKSE Menu Framework SDK, плагин будет собран без меню"
+            }
+          }
+          "menu=$menu" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "sdk=$sdk" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          $dump = "OFF"
+          if ("${{ inputs.dump }}" -eq "true") { $dump = "ON" }
+          cmake -S . -B build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static-md `
+            -DVCPKG_HOST_TRIPLET=x64-windows-static-md `
+            -DSUBTITLESCALER_DUMP=$dump `
+            -DSUBTITLESCALER_MENU=${{ steps.sdk.outputs.menu }} `
+            "-DMENU_SDK_DIR=${{ steps.sdk.outputs.sdk }}"
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Collect mod files
+        shell: pwsh
+        run: |
+          $dll = Get-ChildItem -Path build -Recurse -Filter SubtitleScaler.dll | Select-Object -First 1
+          if (-not $dll) { throw "SubtitleScaler.dll не найден" }
+          New-Item -ItemType Directory -Force -Path dist/Data/SKSE/Plugins | Out-Null
+          New-Item -ItemType Directory -Force -Path dist/Data/Scripts/Source | Out-Null
+          Copy-Item $dll.FullName dist/Data/SKSE/Plugins/
+          Copy-Item dist-template/Data/SKSE/Plugins/SubtitleScaler.ini dist/Data/SKSE/Plugins/
+          Copy-Item dist-template/Data/Scripts/Source/SubtitleScaler.psc dist/Data/Scripts/Source/
+
+      - name: Upload mod
+        uses: actions/upload-artifact@v4
+        with:
+          name: SubtitleScaler
+          path: dist/
