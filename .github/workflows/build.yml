@@ -80,3 +80,4 @@ jobs:
         with:
           name: SubtitleScaler
           path: dist/
+FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true
