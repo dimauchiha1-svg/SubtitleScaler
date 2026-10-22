@@ -1,5 +1,5 @@
 name: Build SubtitleScaler
-
+env: FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true
 on:
   push:
   pull_request:
@@ -80,4 +80,3 @@ jobs:
         with:
           name: SubtitleScaler
           path: dist/
-FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true
