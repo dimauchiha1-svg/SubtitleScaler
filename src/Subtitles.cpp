@@ -19,23 +19,42 @@ namespace
 
 	void QueueApply(const EntryPtr& a_entry, int a_attempt, bool a_withRetry);
 
-#ifdef SUBTITLESCALER_DUMP
-	// Отладка: пишет в лог имена всех членов объекта, чтобы найти правильный путь к элементу интерфейса.
-	struct MemberDumper : RE::GFxValue::ObjectVisitor
+	// Клипы, текстовые поля и массивы в Scaleform имеют тип >= Object (6, 7, 8 в нумерации Scaleform).
+	// Проверяем по номеру типа, потому что IsObject() в разных версиях CommonLibSSE означает
+	// либо только "объект", либо "объект, массив или экранный объект".
+	bool IsClip(const RE::GFxValue& a_value)
 	{
-		void Visit(const char* a_name, const RE::GFxValue& a_val) override
-		{
-			spdlog::info("    член: {} (тип {})", a_name, static_cast<int>(a_val.GetType()));
-		}
-	};
+		const auto t = static_cast<int>(a_value.GetType());
+		return t >= 6 && t <= 8;
+	}
 
-	void DumpMembers(RE::GFxMovieView* a_movie, const std::string& a_path)
+#ifdef SUBTITLESCALER_DUMP
+	// Отладка: перечисляет члены объекта, если эта версия CommonLibSSE умеет VisitMembers.
+	template <class V>
+	void EnumerateMembers(V& a_obj, const std::string& a_path)
+	{
+		if constexpr (requires(V& v, typename V::ObjectVisitor* p) { v.VisitMembers(p); }) {
+			struct Dumper : V::ObjectVisitor
+			{
+				void Visit(const char* a_name, const V& a_val) override
+				{
+					spdlog::info("    член: {} (тип {})", a_name, static_cast<int>(a_val.GetType()));
+				}
+			};
+			spdlog::info("  Члены {}:", a_path);
+			Dumper dumper;
+			a_obj.VisitMembers(&dumper);
+		} else {
+			spdlog::info("  Перечисление членов {} недоступно в этой версии CommonLibSSE", a_path);
+		}
+	}
+
+	void DumpPath(RE::GFxMovieView* a_movie, const std::string& a_path)
 	{
 		RE::GFxValue obj;
-		if (a_movie->GetVariable(&obj, a_path.c_str()) && obj.IsObject()) {
-			spdlog::info("  Члены {}:", a_path);
-			MemberDumper dumper;
-			obj.VisitMembers(&dumper);
+		if (a_movie->GetVariable(&obj, a_path.c_str()) && IsClip(obj)) {
+			spdlog::info("  {} найден (тип {})", a_path, static_cast<int>(obj.GetType()));
+			EnumerateMembers(obj, a_path);
 		} else {
 			spdlog::info("  {} не найден", a_path);
 		}
@@ -43,14 +62,25 @@ namespace
 
 	void DumpEntry(const EntryPtr& a_entry, RE::GFxMovieView* a_movie)
 	{
-		spdlog::info("[{}] элемент не найден. Содержимое меню '{}':", a_entry->name, a_entry->GetMenu());
-		DumpMembers(a_movie, "_root");
-		// Родитель первого пути, например "_root.DialogueMenu_mc" для "_root.DialogueMenu_mc.SubtitleText"
+		spdlog::info("[{}] элемент не найден. Диагностика меню '{}':", a_entry->name, a_entry->GetMenu());
+		DumpPath(a_movie, "_root");
+
+		// Проверяем цепочку пути по частям: видно, на каком звене она обрывается.
 		for (const auto& path : a_entry->GetPaths()) {
-			if (const auto dot = path.rfind('.'); dot != std::string::npos) {
-				DumpMembers(a_movie, path.substr(0, dot));
+			std::string prefix;
+			std::size_t start = 0;
+			while (start <= path.size()) {
+				const auto dot = path.find('.', start);
+				const auto part = path.substr(start, dot == std::string::npos ? std::string::npos : dot - start);
+				prefix += (prefix.empty() ? "" : ".") + part;
+				if (prefix != "_root") {
+					DumpPath(a_movie, prefix);
+				}
+				if (dot == std::string::npos) {
+					break;
+				}
+				start = dot + 1;
 			}
-			break;
 		}
 	}
 #endif
@@ -67,7 +97,7 @@ namespace
 
 		for (const auto& path : a_entry->GetPaths()) {
 			RE::GFxValue clip;
-			if (!a_movie->GetVariable(&clip, path.c_str()) || !clip.IsObject()) {
+			if (!a_movie->GetVariable(&clip, path.c_str()) || !IsClip(clip)) {
 				continue;
 			}
 

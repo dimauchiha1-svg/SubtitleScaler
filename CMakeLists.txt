@@ -9,8 +9,9 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Совпадает с триплетом x64-windows-static-md (статические библиотеки, динамическая CRT)
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+# Статическая CRT: CommonLibSSE NG сам добавляет /MT, поэтому всё остальное
+# (триплет vcpkg x64-windows-static) тоже собирается со статической CRT.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 option(SUBTITLESCALER_DUMP "Писать в лог структуру меню, если элемент субтитров не найден" OFF)
 option(SUBTITLESCALER_MENU "Меню настроек для SKSE Menu Framework" ON)
@@ -35,6 +36,9 @@ add_commonlibsse_plugin(${PROJECT_NAME}
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE src)
+
+# PCH подключается ко всем файлам цели, в том числе к сгенерированному файлу плагина.
+target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)
 
 if(SUBTITLESCALER_DUMP)
     target_compile_definitions(${PROJECT_NAME} PRIVATE SUBTITLESCALER_DUMP)
@@ -88,7 +92,12 @@ if(SUBTITLESCALER_MENU)
                     IMPORTED_IMPLIB "${_mf_lib}"
                     IMPORTED_LOCATION "${_mf_dll}"
                     INTERFACE_INCLUDE_DIRECTORIES "${_mf_hdr_dir}")
-                target_link_libraries(${PROJECT_NAME} PRIVATE SKSEMenuFramework ImGui::imgui)
+                target_link_libraries(${PROJECT_NAME} PRIVATE SKSEMenuFramework ImGui::imgui delayimp)
+                # Отложенная загрузка: без SKSE Menu Framework плагин всё равно запускается,
+                # просто без меню (проверка в UI.cpp выполняется до первого вызова фреймворка).
+                target_link_options(${PROJECT_NAME} PRIVATE
+                    /DELAYLOAD:SKSEMenuFramework.dll
+                    /DELAYLOAD:imgui.dll)
                 target_compile_definitions(${PROJECT_NAME} PRIVATE SUBTITLESCALER_MENU)
                 set(_menu_ok TRUE)
                 message(STATUS "SKSE Menu Framework: подключён (${_mf_lib})")

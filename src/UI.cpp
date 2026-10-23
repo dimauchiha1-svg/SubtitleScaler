@@ -7,6 +7,8 @@
 
 #ifdef SUBTITLESCALER_MENU
 
+#include <Windows.h>
+
 #include "SKSEMenuFramework.h"
 
 #if __has_include(<imgui/imgui.h>)
@@ -17,6 +19,13 @@
 
 namespace
 {
+	// Заголовок текущей версии фреймворка не содержит IsInstalled(), поэтому проверяем сами:
+	// DLL фреймворка загружается SKSE до нашего kPostLoad, если мод установлен.
+	bool IsFrameworkInstalled()
+	{
+		return ::GetModuleHandleA("SKSEMenuFramework.dll") != nullptr;
+	}
+
 	// Сообщение о результате последнего действия (сохранение / загрузка INI).
 	const char* g_status = "";
 
@@ -98,7 +107,7 @@ namespace UI
 {
 	void Register()
 	{
-		if (!SKSEMenuFramework::IsInstalled()) {
+		if (!IsFrameworkInstalled()) {
 			spdlog::info("SKSE Menu Framework не установлен, меню настроек недоступно");
 			return;
 		}
