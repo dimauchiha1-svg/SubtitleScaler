@@ -15,7 +15,7 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 option(SUBTITLESCALER_DUMP "Писать в лог структуру меню, если элемент субтитров не найден" OFF)
 option(SUBTITLESCALER_MENU "Меню настроек для SKSE Menu Framework" ON)
-set(MENU_SDK_DIR "" CACHE PATH "Папка с клоном https://github.com/Thiago099/SKSE-Menu-Framework-SDK")
+set(MENU_API_DIR "" CACHE PATH "Папка с клоном https://github.com/QTR-Modding/SKSE-Menu-Framework-3-API")
 
 find_package(CommonLibSSE CONFIG REQUIRED)
 
@@ -45,74 +45,19 @@ if(SUBTITLESCALER_DUMP)
 endif()
 
 # ---------------------------------------------------------------------------
-# SKSE Menu Framework (необязательно). Нужен SDK: https://github.com/Thiago099/SKSE-Menu-Framework-SDK
-# Ищем в нём SKSEMenuFramework.h/.lib и сборку ImGui. Если что-то не найдено,
+# SKSE Menu Framework 3 (необязательно). Нужен только заголовок SKSEMenuFramework.h из репозитория
+# https://github.com/QTR-Modding/SKSE-Menu-Framework-3-API (линковать ничего не нужно: функции
+# фреймворка и ImGui вызываются через GetProcAddress). Если заголовок не найден,
 # плагин собирается без меню (предупреждение в логе CMake).
 # ---------------------------------------------------------------------------
 if(SUBTITLESCALER_MENU)
-    set(_menu_ok FALSE)
-
-    if(MENU_SDK_DIR AND IS_DIRECTORY "${MENU_SDK_DIR}")
-        file(GLOB_RECURSE _mf_libs "${MENU_SDK_DIR}/Mods/*SKSEMenuFramework.lib")
-        file(GLOB_RECURSE _mf_hdrs "${MENU_SDK_DIR}/Mods/*SKSEMenuFramework.h")
-
-        # Для Release берём сборку без суффикса " DEV"; если такой нет, подойдёт любая.
-        set(_mf_lib "")
-        foreach(_f IN LISTS _mf_libs)
-            if(NOT "${_f}" MATCHES " DEV")
-                set(_mf_lib "${_f}")
-            endif()
-        endforeach()
-        if(NOT _mf_lib AND _mf_libs)
-            list(GET _mf_libs 0 _mf_lib)
-        endif()
-
-        set(_mf_hdr "")
-        foreach(_f IN LISTS _mf_hdrs)
-            if(NOT "${_f}" MATCHES " DEV")
-                set(_mf_hdr "${_f}")
-            endif()
-        endforeach()
-        if(NOT _mf_hdr AND _mf_hdrs)
-            list(GET _mf_hdrs 0 _mf_hdr)
-        endif()
-
-        if(_mf_lib AND _mf_hdr)
-            get_filename_component(_mf_hdr_dir "${_mf_hdr}" DIRECTORY)
-            string(REGEX REPLACE "\\.lib$" ".dll" _mf_dll "${_mf_lib}")
-
-            list(APPEND CMAKE_PREFIX_PATH
-                "${MENU_SDK_DIR}/ImGui/release/lib/cmake"
-                "${MENU_SDK_DIR}/ImGui/release")
-            find_package(ImGui CONFIG QUIET)
-
-            if(ImGui_FOUND)
-                add_library(SKSEMenuFramework SHARED IMPORTED)
-                set_target_properties(SKSEMenuFramework PROPERTIES
-                    IMPORTED_IMPLIB "${_mf_lib}"
-                    IMPORTED_LOCATION "${_mf_dll}"
-                    INTERFACE_INCLUDE_DIRECTORIES "${_mf_hdr_dir}")
-                target_link_libraries(${PROJECT_NAME} PRIVATE SKSEMenuFramework ImGui::imgui delayimp)
-                # Отложенная загрузка: без SKSE Menu Framework плагин всё равно запускается,
-                # просто без меню (проверка в UI.cpp выполняется до первого вызова фреймворка).
-                target_link_options(${PROJECT_NAME} PRIVATE
-                    /DELAYLOAD:SKSEMenuFramework.dll
-                    /DELAYLOAD:imgui.dll)
-                target_compile_definitions(${PROJECT_NAME} PRIVATE SUBTITLESCALER_MENU)
-                set(_menu_ok TRUE)
-                message(STATUS "SKSE Menu Framework: подключён (${_mf_lib})")
-            else()
-                message(WARNING "SKSE Menu Framework: ImGui не найден в '${MENU_SDK_DIR}/ImGui/release'")
-            endif()
-        else()
-            message(WARNING "SKSE Menu Framework: SKSEMenuFramework.h/.lib не найдены в '${MENU_SDK_DIR}/Mods'")
-        endif()
+    if(MENU_API_DIR AND EXISTS "${MENU_API_DIR}/SKSEMenuFramework.h")
+        target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE "${MENU_API_DIR}")
+        target_compile_definitions(${PROJECT_NAME} PRIVATE SUBTITLESCALER_MENU)
+        message(STATUS "SKSE Menu Framework: заголовок найден (${MENU_API_DIR})")
     else()
-        message(WARNING "SKSE Menu Framework: не задан MENU_SDK_DIR (-DMENU_SDK_DIR=<путь к SDK>)")
-    endif()
-
-    if(NOT _menu_ok)
-        message(WARNING "Плагин будет собран БЕЗ меню SKSE Menu Framework")
+        message(WARNING "SKSE Menu Framework: SKSEMenuFramework.h не найден в MENU_API_DIR='${MENU_API_DIR}'. "
+                        "Плагин будет собран БЕЗ меню.")
     endif()
 endif()
 

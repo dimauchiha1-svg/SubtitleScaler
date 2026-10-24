@@ -9,21 +9,47 @@
 
 #include <Windows.h>
 
-#include "SKSEMenuFramework.h"
+#include <atomic>
+#include <cstdarg>
+#include <cstdint>
+#include <filesystem>
 
-#if __has_include(<imgui/imgui.h>)
-#	include <imgui/imgui.h>
-#else
-#	include <imgui.h>
-#endif
+// Заголовок API SKSE Menu Framework 3. ImGui в нём вызывается через функции самого фреймворка
+// (пространство имён ImGuiMCP), поэтому imgui.dll и библиотеки ImGui не нужны.
+#include "SKSEMenuFramework.h"
 
 namespace
 {
-	// Заголовок текущей версии фреймворка не содержит IsInstalled(), поэтому проверяем сами:
-	// DLL фреймворка загружается SKSE до нашего kPostLoad, если мод установлен.
+	constexpr auto kFrameworkModule = L"SKSEMenuFramework";
+
 	bool IsFrameworkInstalled()
 	{
-		return ::GetModuleHandleA("SKSEMenuFramework.dll") != nullptr;
+		return ::GetModuleHandleW(kFrameworkModule) != nullptr;
+	}
+
+	// Заголовок вызывает функции фреймворка через GetProcAddress без проверки результата, поэтому
+	// перед регистрацией страницы убеждаемся, что нужные функции есть в установленной версии фреймворка.
+	bool HasRequiredExports()
+	{
+		static constexpr const char* kNames[] = {
+			"AddSectionItem", "igGetVersion", "igGetCurrentContext", "igCheckbox", "igSliderFloat",
+			"igDragFloat2", "igButton", "igSameLine", "igSeparator", "igPushID_Str", "igPopID",
+			"igTextV", "igTextWrappedV", "igTextUnformatted"
+		};
+
+		const auto module = ::GetModuleHandleW(kFrameworkModule);
+		if (!module) {
+			return false;
+		}
+
+		bool ok = true;
+		for (const auto* name : kNames) {
+			if (!::GetProcAddress(module, name)) {
+				spdlog::error("Меню: в SKSEMenuFramework.dll нет функции {}", name);
+				ok = false;
+			}
+		}
+		return ok;
 	}
 
 	// Сообщение о результате последнего действия (сохранение / загрузка INI).
@@ -45,56 +71,44 @@ namespace
 
 	void RenderBody()
 	{
-		// Диагностика: первый вызов пишется в лог ДО обращения к ImGui. Если игра вылетает при открытии
-		// страницы, по логу видно, дошло ли дело до ImGui и что вернул GetCurrentContext().
+		// Диагностика: первый вызов пишется в лог ДО обращения к ImGui.
 		static bool s_logged = false;
 		if (!s_logged) {
 			s_logged = true;
 			spdlog::info("Меню: первый вызов Render");
-			spdlog::info("Меню: ImGui {}, контекст {}", ImGui::GetVersion(), static_cast<const void*>(ImGui::GetCurrentContext()));
+			spdlog::info("Меню: ImGui {}, контекст {}", ImGuiMCP::GetVersion(), static_cast<const void*>(ImGuiMCP::GetCurrentContext()));
 		}
 
-		// Нет контекста ImGui значит, наша копия ImGui не та, которую использует фреймворк.
-		// Рисовать нельзя (вылет), поэтому показываем ничего и пишем причину в лог.
-		if (!ImGui::GetCurrentContext()) {
-			static bool s_warned = false;
-			if (!s_warned) {
-				s_warned = true;
-				spdlog::error("Меню: у ImGui нет текущего контекста. Версия ImGui в плагине не совпадает с фреймворком.");
-			}
-			return;
-		}
-
-		ImGui::TextWrapped("Changes are applied immediately. World subtitles update on the next spoken line, "
-						   "dialogue window elements the next time the window is opened.");
+		ImGuiMCP::TextWrapped("Changes are applied immediately. World subtitles update on the next spoken line, "
+							  "dialogue window elements the next time the window is opened.");
 
 		for (const auto& e : Settings::GetEntries()) {
-			ImGui::PushID(e->name.c_str());
-			ImGui::Separator();
-			ImGui::Text("%s", GetTitle(e->name));
+			ImGuiMCP::PushID(e->name.c_str());
+			ImGuiMCP::Separator();
+			ImGuiMCP::Text("%s", GetTitle(e->name));
 
 			bool changed = false;
 
 			bool on = e->enabled.load();
-			if (ImGui::Checkbox("Enabled", &on)) {
+			if (ImGuiMCP::Checkbox("Enabled", &on)) {
 				e->enabled = on;
 				changed = true;
 			}
 
 			float scale = e->scale.load();
-			if (ImGui::SliderFloat("Scale (%)", &scale, Settings::kMinScale, Settings::kMaxScale, "%.0f")) {
+			if (ImGuiMCP::SliderFloat("Scale (%)", &scale, Settings::kMinScale, Settings::kMaxScale, "%.0f")) {
 				e->scale = scale;
 				changed = true;
 			}
 
 			float offset[2] = { e->offsetX.load(), e->offsetY.load() };
-			if (ImGui::DragFloat2("Offset X / Y", offset, 1.0f, -500.0f, 500.0f, "%.0f")) {
+			if (ImGuiMCP::DragFloat2("Offset X / Y", offset, 1.0f, -500.0f, 500.0f, "%.0f")) {
 				e->offsetX = offset[0];
 				e->offsetY = offset[1];
 				changed = true;
 			}
 
-			if (ImGui::Button("Original size")) {
+			if (ImGuiMCP::Button("Original size")) {
 				e->scale = 100.0f;
 				e->offsetX = 0.0f;
 				e->offsetY = 0.0f;
@@ -104,32 +118,32 @@ namespace
 			if (changed) {
 				Subtitles::Apply(e, false);
 			}
-			ImGui::PopID();
+			ImGuiMCP::PopID();
 		}
 
-		ImGui::Separator();
-		if (ImGui::Button("Save to INI")) {
+		ImGuiMCP::Separator();
+		if (ImGuiMCP::Button("Save to INI")) {
 			g_status = Settings::Save() ? "Saved to SubtitleScaler.ini" : "Could not write SubtitleScaler.ini (see log)";
 		}
-		ImGui::SameLine();
-		if (ImGui::Button("Reload from INI")) {
+		ImGuiMCP::SameLine();
+		if (ImGuiMCP::Button("Reload from INI")) {
 			Settings::Load();
 			Subtitles::ApplyAll(false);
 			g_status = "Reloaded from SubtitleScaler.ini";
 		}
 		if (g_status[0] != '\0') {
-			ImGui::TextUnformatted(g_status);
+			ImGuiMCP::TextUnformatted(g_status);
 		}
 	}
 
-	// Если ImGui недоступен (например, не найден imgui.dll или в нём нет нужной функции),
-	// Windows бросает SEH-исключение. Ловим его, чтобы не уронить игру: меню отключается до перезапуска.
+	// Если вызов ImGui всё же приведёт к аварии, Windows бросает SEH-исключение. Ловим его, чтобы не
+	// уронить игру: страница отключается до перезапуска.
 	bool g_menuBroken = false;
 
 	void LogMenuBroken()
 	{
-		spdlog::error("Меню: вызов ImGui привёл к аварии (вероятно, нет imgui.dll или версия ImGui не совпадает "
-					  "с фреймворком). Страница меню отключена до перезапуска игры, настройки доступны в INI.");
+		spdlog::error("Меню: вызов ImGui привёл к аварии. Страница меню отключена до перезапуска игры, "
+					  "настройки доступны в INI.");
 	}
 
 	void __stdcall Render()
@@ -161,6 +175,11 @@ namespace UI
 	{
 		if (!IsFrameworkInstalled()) {
 			spdlog::info("SKSE Menu Framework не установлен, меню настроек недоступно");
+			return;
+		}
+
+		if (!HasRequiredExports()) {
+			spdlog::error("Меню: установленная версия SKSE Menu Framework несовместима, меню настроек отключено");
 			return;
 		}
 
