@@ -1,7 +1,7 @@
 #pragma once
 
-// Меню настроек для SKSE Menu Framework (Mod Control Panel).
-// Если плагин собран без поддержки меню или фреймворк не установлен, Register() ничего не делает.
+// Settings menu for SKSE Menu Framework (Mod Control Panel).
+// If the plugin is built without menu support or the framework is not installed, Register() does nothing.
 namespace UI
 {
 	void Register();

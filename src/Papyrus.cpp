@@ -9,7 +9,7 @@ namespace
 {
 	constexpr auto kScriptName = "SubtitleScaler";
 
-	// asName: имя секции INI: "HUD", "Dialogue" или "PlayerChoices".
+	// asName: INI section name: "HUD", "Dialogue" or "PlayerChoices".
 
 	float GetScale(RE::StaticFunctionTag*, std::string_view a_name)
 	{
@@ -17,7 +17,7 @@ namespace
 		return e ? e->scale.load() : 0.0f;
 	}
 
-	// Устанавливает масштаб для всех целей сразу.
+	// Sets the scale of all targets at once.
 	void SetScale(RE::StaticFunctionTag*, float a_percent)
 	{
 		const auto v = std::clamp(a_percent, Settings::kMinScale, Settings::kMaxScale);

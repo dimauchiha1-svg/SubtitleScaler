@@ -31,7 +31,7 @@ namespace
 	{
 		switch (a_msg->type) {
 		case SKSE::MessagingInterface::kPostLoad:
-			// Все SKSE-плагины уже загружены, значит, SKSE Menu Framework (если он есть) доступен.
+			// All SKSE plugins are loaded by now, so SKSE Menu Framework (if installed) is available.
 			UI::Register();
 			break;
 		case SKSE::MessagingInterface::kDataLoaded:
@@ -53,7 +53,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 	SKSE::Init(a_skse);
 	SetupLog();
 
-	spdlog::info("SubtitleScaler загружается");
+	spdlog::info("SubtitleScaler is loading");
 
 	Settings::Load();
 

@@ -49,16 +49,19 @@ namespace
 	std::mutex                                       g_mutex;
 	std::vector<std::shared_ptr<Settings::Entry>>& Registry()
 	{
-		// Встроенные цели. PlayerChoices по умолчанию выключена,
-		// пока пользователь сам её не включит.
+		// Built-in targets. PlayerChoices is disabled by default
+		// until the user enables it.
 		static std::vector<std::shared_ptr<Settings::Entry>> entries = [] {
 			using E = Settings::Entry;
 			std::vector<std::shared_ptr<E>> v;
-			v.push_back(std::make_shared<E>("HUD", "HUD Menu",
-				std::vector<std::string>{ "_root.HUDMovieBaseInstance.SubtitleTextHolder" }, true));
+			auto hud = std::make_shared<E>("HUD", "HUD Menu",
+				std::vector<std::string>{ "_root.HUDMovieBaseInstance.SubtitleTextHolder" }, true);
+			hud->maxWidth = 1100.0f;
+			v.push_back(std::move(hud));
 			auto dialogue = std::make_shared<E>("Dialogue", "Dialogue Menu",
 				std::vector<std::string>{ "_root.DialogueMenu_mc.SubtitleText" }, true);
-			dialogue->centerAnchor = true;  // текст в окне диалога по центру: без этого он уезжает вправо
+			dialogue->centerAnchor = true;  // text in the dialogue window is centered: without this it drifts to the right
+			dialogue->maxWidth = 1100.0f;   // long lines wrap instead of running off the screen
 			v.push_back(std::move(dialogue));
 			v.push_back(std::make_shared<E>("PlayerChoices", "Dialogue Menu",
 				std::vector<std::string>{ "_root.DialogueMenu_mc.TopicListHolder" }, false));
@@ -113,10 +116,11 @@ namespace Settings
 				{ "Enabled", e->enabled.load() ? "1" : "0" },
 				{ "Scale", fmt(e->scale.load()) },
 				{ "OffsetX", fmt(e->offsetX.load()) },
-				{ "OffsetY", fmt(e->offsetY.load()) }
+				{ "OffsetY", fmt(e->offsetY.load()) },
+				{ "MaxWidth", fmt(e->maxWidth.load()) }
 			};
 
-			// Границы секции: header = строка "[Имя]", end = начало следующей секции.
+			// Section bounds: header = the "[Name]" line, end = start of the next section.
 			const auto nameKey = Lower(e->name);
 			std::size_t header = lines.size();
 			std::size_t end = lines.size();
@@ -135,7 +139,7 @@ namespace Settings
 				}
 			}
 
-			// Секции нет: дописываем в конец файла.
+			// Section is missing: append it to the end of the file.
 			if (header == lines.size()) {
 				if (!lines.empty() && !lines.back().empty()) {
 					lines.emplace_back();
@@ -170,7 +174,7 @@ namespace Settings
 
 		std::ofstream out(kIniPath, std::ios::trunc);
 		if (!out.is_open()) {
-			spdlog::error("Не удалось открыть {} для записи", kIniPath);
+			spdlog::error("Could not open {} for writing", kIniPath);
 			return false;
 		}
 		for (const auto& l : lines) {
@@ -178,10 +182,10 @@ namespace Settings
 		}
 		out.flush();
 		if (!out.good()) {
-			spdlog::error("Ошибка записи в {}", kIniPath);
+			spdlog::error("Error writing to {}", kIniPath);
 			return false;
 		}
-		spdlog::info("Настройки сохранены в {}", kIniPath);
+		spdlog::info("Settings saved to {}", kIniPath);
 		return true;
 	}
 
@@ -189,11 +193,11 @@ namespace Settings
 	{
 		std::ifstream file(kIniPath);
 		if (!file.is_open()) {
-			spdlog::warn("INI не найден ({}), используются значения по умолчанию", kIniPath);
+			spdlog::warn("INI not found ({}), using default values", kIniPath);
 			return;
 		}
 
-		std::shared_ptr<Entry>                    current = Find("HUD");  // ключи до первой секции относятся к HUD
+		std::shared_ptr<Entry>                    current = Find("HUD");  // keys before the first section belong to HUD
 		std::map<Entry*, std::vector<std::string>> newPaths;
 		std::string                               line;
 
@@ -203,7 +207,7 @@ namespace Settings
 				continue;
 			}
 
-			// Секция: [Имя]
+			// Section: [Name]
 			if (line[0] == '[') {
 				const auto close = line.find(']');
 				const auto name = Trim(line.substr(1, close == std::string::npos ? std::string::npos : close - 1));
@@ -212,12 +216,12 @@ namespace Settings
 				}
 				current = Find(name);
 				if (!current) {
-					spdlog::warn("Неизвестная секция INI [{}] пропущена", name);
+					spdlog::warn("Unknown INI section [{}] skipped", name);
 				}
 				continue;
 			}
 
-			// Ключи неизвестной секции пропускаем.
+			// Skip keys of an unknown section.
 			if (!current) {
 				continue;
 			}
@@ -230,7 +234,7 @@ namespace Settings
 			const auto key = Lower(Trim(line.substr(0, eq)));
 			auto       val = Trim(line.substr(eq + 1));
 
-			// Комментарий в конце строки: "Scale=150 ; текст"
+			// Trailing comment: "Scale=150 ; text"
 			if (const auto c = val.find(" ;"); c != std::string::npos) {
 				val = Trim(val.substr(0, c));
 			}
@@ -249,6 +253,10 @@ namespace Settings
 			} else if (key == "offsety") {
 				if (ParseFloat(val, f)) {
 					current->offsetY = f;
+				}
+			} else if (key == "maxwidth") {
+				if (ParseFloat(val, f)) {
+					current->maxWidth = std::max(0.0f, f);
 				}
 			} else if (key == "anchor") {
 				current->centerAnchor = (Lower(val) == "center");
@@ -273,7 +281,7 @@ namespace Settings
 		for (const auto& e : GetEntries()) {
 			if (e->GetMenu().empty()) {
 				if (e->enabled.load()) {
-					spdlog::warn("Секция [{}]: параметр Menu пуст, секция отключена", e->name);
+					spdlog::warn("Section [{}]: Menu is empty, section disabled", e->name);
 				}
 				e->enabled = false;
 			}

@@ -16,13 +16,13 @@ namespace
 {
 	using EntryPtr = std::shared_ptr<Settings::Entry>;
 
-	constexpr int kMaxAttempts = 20;  // 20 * 500 мс = 10 секунд ожидания меню
+	constexpr int kMaxAttempts = 20;  // 20 * 500 ms = 10 seconds of waiting for the menu
 
 	void QueueApply(const EntryPtr& a_entry, int a_attempt, bool a_withRetry);
 
-	// Клипы, текстовые поля и массивы в Scaleform имеют тип >= Object (6, 7, 8 в нумерации Scaleform).
-	// Проверяем по номеру типа, потому что IsObject() в разных версиях CommonLibSSE означает
-	// либо только "объект", либо "объект, массив или экранный объект".
+	// Clips, text fields and arrays in Scaleform have a type >= Object (6, 7, 8 in Scaleform numbering).
+	// Checked by type number, because IsObject() means either only "object"
+	// or "object, array or display object" depending on the CommonLibSSE version.
 	bool IsClip(const RE::GFxValue& a_value)
 	{
 		const auto t = static_cast<int>(a_value.GetType());
@@ -30,7 +30,7 @@ namespace
 	}
 
 #ifdef SUBTITLESCALER_DUMP
-	// Отладка: перечисляет члены объекта, если эта версия CommonLibSSE умеет VisitMembers.
+	// Debug: lists the members of an object, if this CommonLibSSE version supports VisitMembers.
 	template <class V>
 	void EnumerateMembers(V& a_obj, const std::string& a_path)
 	{
@@ -39,14 +39,14 @@ namespace
 			{
 				void Visit(const char* a_name, const V& a_val) override
 				{
-					spdlog::info("    член: {} (тип {})", a_name, static_cast<int>(a_val.GetType()));
+					spdlog::info("    member: {} (type {})", a_name, static_cast<int>(a_val.GetType()));
 				}
 			};
-			spdlog::info("  Члены {}:", a_path);
+			spdlog::info("  Members of {}:", a_path);
 			Dumper dumper;
 			a_obj.VisitMembers(&dumper);
 		} else {
-			spdlog::info("  Перечисление членов {} недоступно в этой версии CommonLibSSE", a_path);
+			spdlog::info("  Member enumeration of {} is not available in this CommonLibSSE version", a_path);
 		}
 	}
 
@@ -54,19 +54,19 @@ namespace
 	{
 		RE::GFxValue obj;
 		if (a_movie->GetVariable(&obj, a_path.c_str()) && IsClip(obj)) {
-			spdlog::info("  {} найден (тип {})", a_path, static_cast<int>(obj.GetType()));
+			spdlog::info("  {} found (type {})", a_path, static_cast<int>(obj.GetType()));
 			EnumerateMembers(obj, a_path);
 		} else {
-			spdlog::info("  {} не найден", a_path);
+			spdlog::info("  {} not found", a_path);
 		}
 	}
 
 	void DumpEntry(const EntryPtr& a_entry, RE::GFxMovieView* a_movie)
 	{
-		spdlog::info("[{}] элемент не найден. Диагностика меню '{}':", a_entry->name, a_entry->GetMenu());
+		spdlog::info("[{}] element not found. Diagnostics of menu '{}':", a_entry->name, a_entry->GetMenu());
 		DumpPath(a_movie, "_root");
 
-		// Проверяем цепочку пути по частям: видно, на каком звене она обрывается.
+		// Check the path chain piece by piece: shows at which link it breaks.
 		for (const auto& path : a_entry->GetPaths()) {
 			std::string prefix;
 			std::size_t start = 0;
@@ -86,12 +86,111 @@ namespace
 	}
 #endif
 
+	// Reads an object member. false if the member is missing or undefined.
+	bool GetMemberSafe(RE::GFxValue& a_obj, const char* a_name, RE::GFxValue& a_out)
+	{
+		RE::GFxValue v;
+		if (!a_obj.GetMember(a_name, &v) || v.IsUndefined()) {
+			return false;
+		}
+		a_out = v;
+		return true;
+	}
+
+	// Names under which a text field may live inside a holder clip.
+	constexpr const char* kTextFieldNames[] = { "SubtitleText", "SubtitleTextField", "TextField", "textField", "tf", "text_tf" };
+
+	// Looks for a text field whose width can be limited (once per menu opening).
+	void FindTextField(const EntryPtr& a_entry, RE::GFxValue& a_clip)
+	{
+		auto& st = a_entry->ui;
+		if (st.tfSearched) {
+			return;
+		}
+		st.tfSearched = true;
+
+		RE::GFxValue probe;
+		if (GetMemberSafe(a_clip, "wordWrap", probe)) {
+			st.tfName = ".";  // the element itself is a text field
+		} else {
+			for (const auto* name : kTextFieldNames) {
+				RE::GFxValue child;
+				if (GetMemberSafe(a_clip, name, child) && GetMemberSafe(child, "wordWrap", probe)) {
+					st.tfName = name;
+					break;
+				}
+			}
+		}
+
+		spdlog::info("[{}] text field for width limiting: {}", a_entry->name,
+			st.tfName.empty() ? "not found" : (st.tfName == "." ? "the element itself" : st.tfName.c_str()));
+	}
+
+	// Limits the visible width of the text field (line wrapping) or restores the original width.
+	void ApplyWidth(const EntryPtr& a_entry, RE::GFxValue& a_clip, bool a_limit, double a_maxW, double a_target, double a_visualW)
+	{
+		auto& st = a_entry->ui;
+		if (st.tfName.empty() || (!a_limit && !st.limited)) {
+			return;  // nothing to change
+		}
+
+		if (st.tfName == ".") {
+			// The element itself: width is set in visible units (scale included).
+			if (a_limit) {
+				a_clip.SetMember("wordWrap", RE::GFxValue(true));
+				a_clip.SetMember("multiline", RE::GFxValue(true));
+			}
+			a_clip.SetMember("_width", RE::GFxValue(a_limit ? a_maxW : a_visualW));
+
+			// Safeguard: if setting the width changed the text scale, restore the scale.
+			RE::GFxValue xs;
+			if (a_clip.GetMember("_xscale", &xs) && xs.IsNumber() && std::abs(xs.GetNumber() - a_target) > 0.5) {
+				spdlog::warn("[{}] setting the width changed the scale ({} instead of {}), scale restored", a_entry->name, xs.GetNumber(), a_target);
+				a_clip.SetMember("_xscale", RE::GFxValue(a_target));
+				a_clip.SetMember("_yscale", RE::GFxValue(a_target));
+			}
+		} else {
+			// Child field: width is set in the holder's local units, visible = local * scale.
+			RE::GFxValue tf;
+			if (!GetMemberSafe(a_clip, st.tfName.c_str(), tf)) {
+				return;
+			}
+			if (!st.tfW0) {
+				RE::GFxValue w, x;
+				tf.GetMember("_width", &w);
+				tf.GetMember("_x", &x);
+				st.tfW0 = w.IsNumber() ? w.GetNumber() : 0.0;
+				st.tfX0 = x.IsNumber() ? x.GetNumber() : 0.0;
+				RE::GFxValue wrap, multi, autoSize;
+				GetMemberSafe(tf, "wordWrap", wrap);
+				GetMemberSafe(tf, "multiline", multi);
+				GetMemberSafe(tf, "autoSize", autoSize);
+				spdlog::info("[{}] field '{}': width {}, wordWrap={}, multiline={}, autoSize={}", a_entry->name, st.tfName, *st.tfW0,
+					wrap.IsBool() ? static_cast<int>(wrap.GetBool()) : -1, multi.IsBool() ? static_cast<int>(multi.GetBool()) : -1,
+					autoSize.IsString() ? autoSize.GetString() : "(not a string)");
+			}
+			const double w0 = *st.tfW0;
+			const double x0 = *st.tfX0;
+			const double w = a_maxW * 100.0 / a_target;
+			if (a_limit && w < w0) {
+				tf.SetMember("wordWrap", RE::GFxValue(true));
+				tf.SetMember("multiline", RE::GFxValue(true));
+				tf.SetMember("_width", RE::GFxValue(w));
+				tf.SetMember("_x", RE::GFxValue(x0 + (w0 - w) / 2.0));  // the field's center stays in place
+			} else {
+				tf.SetMember("_width", RE::GFxValue(w0));
+				tf.SetMember("_x", RE::GFxValue(x0));
+			}
+		}
+		st.limited = a_limit;
+	}
+
 	bool TryApply(const EntryPtr& a_entry, RE::GFxMovieView* a_movie)
 	{
 		auto&      st = a_entry->ui;
 		const bool on = a_entry->enabled.load();
 
-		// Цель выключена и мы её ещё не трогали: восстанавливать нечего.
+		// Target is disabled and we have not touched it: nothing to restore.
 		if (!on && !st.baseX) {
 			return true;
 		}
@@ -108,7 +207,7 @@ namespace
 				currentScale = v.GetNumber();
 			}
 
-			// Свежесозданный клип имеет масштаб 100: запоминаем его исходную позицию.
+			// A freshly created clip has scale 100: remember its original position.
 			RE::GFxValue vx, vy, vw;
 			clip.GetMember("_x", &vx);
 			clip.GetMember("_y", &vy);
@@ -116,27 +215,51 @@ namespace
 			if (std::abs(currentScale - 100.0) < 0.01 || !st.baseX || !st.baseY) {
 				st.baseX = vx.IsNumber() ? vx.GetNumber() : 0.0;
 				st.baseY = vy.IsNumber() ? vy.GetNumber() : 0.0;
-				// Ширина при 100%: если клип уже увеличен, пересчитываем обратно.
+				// Width at 100%: if the clip is already enlarged, recompute back.
 				st.baseW = vw.IsNumber() ? vw.GetNumber() * 100.0 / std::max(currentScale, 1.0) : 0.0;
 			}
 
-			// Выключенная цель возвращается к исходному виду.
-			const double target = on ? a_entry->scale.load() : 100.0;
+			FindTextField(a_entry, clip);
+
+			// A disabled target returns to its original look.
+			double       target = on ? a_entry->scale.load() : 100.0;
 			const double ox = on ? a_entry->offsetX.load() : 0.0;
 			const double oy = on ? a_entry->offsetY.load() : 0.0;
+			const double maxW = on ? a_entry->maxWidth.load() : 0.0;
+			const double baseW = st.baseW.value_or(0.0);
+
+			// Width limit: enlarged text must not run off the screen edge.
+			bool limit = false;
+			if (maxW > 0.0 && baseW > 0.0 && baseW * target / 100.0 > maxW) {
+				if (st.tfName.empty()) {
+					// Text field not found, nothing to wrap lines with: reduce the scale so the width fits.
+					target = std::max(100.0, maxW / baseW * 100.0);
+					if (!st.warnedNoTf) {
+						st.warnedNoTf = true;
+						spdlog::warn("[{}] text field not found, line wrapping impossible: scale limited to {}% so the text stays on screen",
+							a_entry->name, target);
+					}
+				} else {
+					limit = true;
+				}
+			}
+
+			const double visualW = baseW * target / 100.0;
+			const double effW = limit ? maxW : visualW;
+
+			// Centering: shift left by half of the width increase so the element's center does not drift.
+			const double anchorShift = (on && a_entry->centerAnchor.load() && baseW > 0.0) ? -(effW - baseW) / 2.0 : 0.0;
 
 			clip.SetMember("_xscale", RE::GFxValue(target));
 			clip.SetMember("_yscale", RE::GFxValue(target));
-			// Центрирование: сдвигаем влево на половину прироста ширины, чтобы центр элемента не уезжал.
-			const double anchorShift = (on && a_entry->centerAnchor.load() && st.baseW) ?
-			                               -(target / 100.0 - 1.0) * (*st.baseW) / 2.0 :
-			                               0.0;
-
 			clip.SetMember("_x", RE::GFxValue(*st.baseX + ox + anchorShift));
 			clip.SetMember("_y", RE::GFxValue(*st.baseY + oy));
 
+			ApplyWidth(a_entry, clip, limit, maxW, target, visualW);
+
 			if (std::abs(st.lastLoggedScale - target) > 0.001) {
-				spdlog::info("[{}] масштаб {}% применён к '{}'", a_entry->name, target, path);
+				spdlog::info("[{}] scale {}% applied to '{}' (width at 100%: {}, width limit: {})",
+					a_entry->name, target, path, baseW, limit ? "enabled" : "no");
 				st.lastLoggedScale = target;
 			}
 
@@ -177,9 +300,9 @@ namespace
 			}).detach();
 		} else if (a_withRetry && !a_entry->ui.loggedMissing) {
 			a_entry->ui.loggedMissing = true;
-			spdlog::warn("[{}] элемент не найден ни по одному пути из INI (Paths) в меню '{}'. "
-						 "Проверьте имя меню и путь или соберите плагин с SUBTITLESCALER_DUMP=ON, "
-						 "чтобы вывести структуру меню в лог.",
+			spdlog::warn("[{}] element not found at any path from the INI (Paths) in menu '{}'. "
+						 "Check the menu name and path, or build the plugin with SUBTITLESCALER_DUMP=ON "
+						 "to print the menu structure to the log.",
 				a_entry->name, menuName);
 		}
 	}
@@ -209,16 +332,11 @@ namespace
 					if (entry->GetMenu() != name) {
 						continue;
 					}
-					// Меню создаётся заново при каждом открытии, поэтому исходную позицию
-					// элемента нужно запомнить заново. Сброс выполняется на UI-потоке
-					// раньше самого применения (задачи идут по порядку).
+					// The menu is recreated on every opening, so the original position
+					// of the element must be remembered again. The reset runs on the UI thread
+					// before the apply itself (tasks run in order).
 					if (const auto task = SKSE::GetTaskInterface()) {
-						task->AddUITask([entry]() {
-							entry->ui.baseX.reset();
-							entry->ui.baseY.reset();
-							entry->ui.baseW.reset();
-							entry->ui.loggedMissing = false;
-						});
+						task->AddUITask([entry]() { entry->ui = Settings::Entry::UiState{}; });
 					}
 					Subtitles::Apply(entry, true);
 				}
@@ -240,8 +358,8 @@ namespace Subtitles
 	void ApplyAll(bool a_withRetry)
 	{
 		for (const auto& entry : Settings::GetEntries()) {
-			// Ждать появления меню имеет смысл только для HUD: он существует всё время игры.
-			// Остальные меню применяются при открытии (MenuSink).
+			// Waiting for the menu only makes sense for HUD: it exists for the whole game.
+			// Other menus are applied when they open (MenuSink).
 			Apply(entry, a_withRetry && entry->GetMenu() == Settings::kHudMenu);
 		}
 	}
@@ -250,7 +368,7 @@ namespace Subtitles
 	{
 		if (const auto ui = RE::UI::GetSingleton()) {
 			ui->AddEventSink<RE::MenuOpenCloseEvent>(MenuSink::GetSingleton());
-			spdlog::info("Подписка на события меню оформлена");
+			spdlog::info("Subscribed to menu events");
 		}
 	}
 }

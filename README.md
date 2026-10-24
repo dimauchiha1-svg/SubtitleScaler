@@ -1,110 +1,113 @@
-# SubtitleScaler: SKSE-мод для увеличения субтитров
+# SubtitleScaler: an SKSE mod that enlarges subtitles
 
-SKSE-плагин для Skyrim Special Edition и Anniversary Edition (одна DLL работает на SE 1.5.97 и на всех AE 1.6.x через Address Library).
+An SKSE plugin for Skyrim Special Edition and Anniversary Edition (a single DLL works on SE 1.5.97 and all AE 1.6.x versions through Address Library).
 
-Увеличивает субтитры и варианты ответа в диалогах. Каждый элемент настраивается отдельно: свой размер, сдвиг и включение/выключение.
+It enlarges subtitles and response options in dialogues. Each element is configured separately: its own size, offset and on/off switch.
 
-| Секция INI | Что увеличивает | По умолчанию |
+| INI section | What it enlarges | Default |
 |---|---|---|
-| `[HUD]` | Субтитры, когда NPC говорит с другим NPC или обращается к игроку без окна диалога (приветствия, окрики стражи) | включено, 150% |
-| `[Dialogue]` | Реплика NPC в окне диалога с игроком | включено, 150% |
-| `[PlayerChoices]` | Варианты ответа игрока в окне диалога | выключено |
+| `[HUD]` | Subtitles when an NPC talks to another NPC or addresses the player without a dialogue window (greetings, guard shouts) | enabled, 150% |
+| `[Dialogue]` | The NPC's line in the dialogue window with the player | enabled, 150% |
+| `[PlayerChoices]` | The player's response options in the dialogue window | disabled |
 
-> VR в эту сборку не входит: она собрана на `commonlibsse-ng-flatrim` (SE + AE).
+> VR is not included in this build: it is built on `commonlibsse-ng-flatrim` (SE + AE).
 
-## Что нужно игроку
+## Requirements
 
-- Skyrim SE или AE
-- [SKSE64](https://skse.silverlock.org/) под вашу версию игры
+- Skyrim SE or AE
+- [SKSE64](https://skse.silverlock.org/) for your game version
 - [Address Library for SKSE Plugins](https://www.nexusmods.com/skyrimspecialedition/mods/32444)
-- [SKSE Menu Framework](https://www.nexusmods.com/skyrimspecialedition/mods/120352) (необязательно, нужен только для внутриигрового меню настроек)
+- [SKSE Menu Framework](https://www.nexusmods.com/skyrimspecialedition/mods/120352) (optional, only needed for the in-game settings menu)
 
-## Как получить DLL (сборка в облаке, ничего устанавливать не нужно)
+## How to get the DLL (cloud build, nothing to install)
 
-1. Зарегистрируйтесь на [github.com](https://github.com) (бесплатно).
-2. Создайте новый репозиторий (кнопка **New**), назовите его, например, `SubtitleScaler`.
-3. Загрузите в него **все файлы из этого архива вместе с папками**, включая скрытую папку `.github`. Проще всего перетащить содержимое распакованной папки в окно браузера на странице репозитория (**Add file → Upload files**). Если `.github` не загрузилась, создайте файл через **Add file → Create new file**, в поле имени введите `.github/workflows/build.yml` и вставьте туда содержимое этого файла.
-4. Откройте вкладку **Actions**. Сборка стартует сама после загрузки файлов. Если нет, выберите **Build SubtitleScaler → Run workflow**.
-5. Подождите 10–20 минут (первый раз vcpkg собирает библиотеки). Когда появится зелёная галочка, откройте запуск и внизу в разделе **Artifacts** скачайте `SubtitleScaler`.
-6. В архиве лежит готовая структура папки `Data`.
+1. Sign up at [github.com](https://github.com) (free).
+2. Create a new repository (the **New** button) and name it, for example, `SubtitleScaler`.
+3. Upload **all files from this archive, including folders**, and make sure the hidden `.github` folder is included. The easiest way is to drag the contents of the unpacked folder into the browser window on the repository page (**Add file → Upload files**). If `.github` did not upload, create the file via **Add file → Create new file**, type `.github/workflows/build.yml` as the name and paste in the contents of that file.
+4. Open the **Actions** tab. The build starts automatically after the files are uploaded. If it does not, choose **Build SubtitleScaler → Run workflow**.
+5. Wait 10–20 minutes (the first time, vcpkg builds the libraries). When the green check mark appears, open the run and download `SubtitleScaler` from the **Artifacts** section at the bottom.
+6. The archive contains a ready-made `Data` folder structure.
 
-Если сборка завершилась красным крестиком, откройте шаг, который упал, скопируйте текст ошибки и пришлите его мне. Я исправлю код. Проект я писал, не имея возможности скомпилировать его у себя, поэтому первая сборка может потребовать правок.
+If the build ends with a red cross, open the step that failed, copy the error text and send it to the author so the code can be fixed. The project was written without the ability to compile it locally, so the first build may need fixes.
 
-## Установка
+## Installation
 
-Скопируйте содержимое папки `Data` из артефакта в папку `Data` игры (или установите архивом через менеджер модов):
+Copy the contents of the `Data` folder from the artifact into the game's `Data` folder (or install it as an archive with a mod manager):
 
 ```
 Data/SKSE/Plugins/SubtitleScaler.dll
 Data/SKSE/Plugins/SubtitleScaler.ini
 ```
 
-Не забудьте включить субтитры в настройках игры (**Настройки → Дисплей → Субтитры**).
+Do not forget to enable subtitles in the game settings (**Settings → Display → Subtitles**).
 
-## Меню настроек (SKSE Menu Framework)
+## Settings menu (SKSE Menu Framework)
 
-Если установлен SKSE Menu Framework, в его панели модов (Mod Control Panel) появляется раздел **SubtitleScaler → Subtitles**. Для каждой из трёх целей (`HUD`, `Dialogue`, `PlayerChoices`) в нём есть:
+If SKSE Menu Framework is installed, a **SubtitleScaler → Subtitles** section appears in its Mod Control Panel. For each of the three targets (`HUD`, `Dialogue`, `PlayerChoices`) it has:
 
-- переключатель **Enabled**;
-- ползунок **Scale (%)** (50–400);
-- поля **Offset X / Y**;
-- кнопка **Original size** (возврат к 100% и нулевому сдвигу).
+- an **Enabled** checkbox;
+- a **Scale (%)** slider (50–400);
+- **Offset X / Y** fields;
+- a **Max width** slider;
+- an **Original size** button (returns to 100% and zero offset).
 
-Изменения применяются сразу. Внизу две кнопки: **Save to INI** (записывает значения в `SubtitleScaler.ini`, комментарии в файле сохраняются) и **Reload from INI** (перечитывает файл). Если фреймворка нет, плагин работает как раньше, настраивать его можно через INI.
+Changes are applied immediately. At the bottom there are two buttons: **Save to INI** (writes the values to `SubtitleScaler.ini`, comments in the file are preserved) and **Reload from INI** (re-reads the file). If the framework is not installed, the plugin works as before and can be configured through the INI.
 
-Меню рассчитано на SKSE Menu Framework 3. При сборке workflow скачивает только заголовок `SKSEMenuFramework.h` из [репозитория API](https://github.com/QTR-Modding/SKSE-Menu-Framework-3-API): ImGui и `imgui.dll` плагину не нужны, функции вызываются через сам фреймворк. Перед регистрацией страницы плагин проверяет, что все нужные функции есть в установленной версии фреймворка. Если их нет, меню отключается и причина пишется в лог. Если заголовок скачать не удалось, сборка завершится успешно, но без меню. Чтобы собрать без меню намеренно, при ручном запуске сборки уберите галочку `menu`.
+The menu is designed for SKSE Menu Framework 3. During the build, the workflow downloads only the `SKSEMenuFramework.h` header from the [API repository](https://github.com/QTR-Modding/SKSE-Menu-Framework-3-API): the plugin needs neither ImGui nor `imgui.dll`, since the functions are called through the framework itself. Before registering the page, the plugin checks that all required functions exist in the installed framework version. If they do not, the menu is disabled and the reason is written to the log. If the header could not be downloaded, the build still succeeds, but without the menu. To build without the menu on purpose, untick `menu` when running the workflow manually.
 
-## Настройка (SubtitleScaler.ini)
+## Configuration (SubtitleScaler.ini)
 
-Каждая секция `[Имя]` описывает один элемент интерфейса. Параметры одинаковы для всех секций:
+Each `[Name]` section describes one interface element. The parameters are the same for all sections:
 
-| Параметр | Значение |
+| Parameter | Meaning |
 |---|---|
-| `Enabled` | `1` включено, `0` выключено |
-| `Scale` | Масштаб в процентах, 50–400. `100` = оригинал, `150` = в полтора раза крупнее |
-| `OffsetX`, `OffsetY` | Сдвиг. Если увеличенный элемент уходит за край экрана, подберите значение (отрицательный `OffsetY` поднимает элемент) |
-| `Anchor` | `left` или `center`. При увеличении элемент либо растёт вправо от левого края (`left`), либо остаётся на месте по центру (`center`). Для `[Dialogue]` по умолчанию `center` |
-| `Menu` | Внутреннее имя меню, в котором лежит элемент |
-| `Paths` | Путь к элементу внутри меню (несколько через `|`, берётся первый найденный) |
+| `Enabled` | `1` enabled, `0` disabled |
+| `Scale` | Scale in percent, 50–400. `100` = original, `150` = one and a half times larger |
+| `OffsetX`, `OffsetY` | Offset. If the enlarged element goes off the edge of the screen, adjust the value (a negative `OffsetY` moves the element up) |
+| `MaxWidth` | Maximum visible width of the element (the Skyrim stage is 1280 wide). If the enlarged text is wider, long lines wrap onto new lines instead of running off the screen edge. `0` = no limit. Default is `1100` for subtitles |
+| `Anchor` | `left` or `center`. When enlarged, the element either grows to the right from its left edge (`left`) or stays in place, centered (`center`). Default for `[Dialogue]` is `center` |
+| `Menu` | Internal name of the menu that contains the element |
+| `Paths` | Path to the element inside the menu (several separated by `|`, the first one found is used) |
 
-Чтобы включить увеличение вариантов ответа игрока, поставьте `Enabled=1` в секции `[PlayerChoices]` и подберите `Scale`.
+To enlarge the player's response options, set `Enabled=1` in the `[PlayerChoices]` section and choose a `Scale`.
 
 ## Papyrus
 
-Скрипт `SubtitleScaler.psc` лежит в `Data/Scripts/Source`. Его нужно скомпилировать компилятором Papyrus (Creation Kit или Caprica), чтобы получить `.pex`. Параметр `asName` это имя секции INI. Пример:
+The `SubtitleScaler.psc` script is in `Data/Scripts/Source`. It must be compiled with the Papyrus compiler (Creation Kit or Caprica) to get a `.pex`. The `asName` parameter is the INI section name. Example:
 
 ```papyrus
-SubtitleScaler.SetScale(200.0)                          ; все цели вдвое крупнее
-SubtitleScaler.SetTargetScale("Dialogue", 170.0)        ; только реплики в окне диалога
-SubtitleScaler.SetEnabled("PlayerChoices", true)        ; включить варианты ответа
-SubtitleScaler.SetOffset("HUD", 0.0, -40.0)             ; сдвиг субтитров вверх
+SubtitleScaler.SetScale(200.0)                          ; all targets twice as large
+SubtitleScaler.SetTargetScale("Dialogue", 170.0)        ; dialogue window lines only
+SubtitleScaler.SetEnabled("PlayerChoices", true)        ; enable response options
+SubtitleScaler.SetOffset("HUD", 0.0, -40.0)             ; move subtitles up
 Float s = SubtitleScaler.GetScale("Dialogue")
-SubtitleScaler.ReloadConfig()                           ; перечитать INI
+SubtitleScaler.ReloadConfig()                           ; re-read the INI
 ```
 
-Значения, заданные через Papyrus, действуют до закрытия игры. Чтобы они сохранялись, вызывайте функции в `OnPlayerLoadGame` (например, из MCM) или правьте INI.
+Values set through Papyrus last until the game is closed. To make them persist, call the functions in `OnPlayerLoadGame` (for example, from an MCM) or edit the INI.
 
-## Проверка и диагностика
+## Verification and diagnostics
 
-Лог плагина: `Documents\My Games\Skyrim Special Edition\SKSE\SubtitleScaler.log` (для GOG: `Skyrim Special Edition GOG`).
+Plugin log: `Documents\My Games\Skyrim Special Edition\SKSE\SubtitleScaler.log` (for GOG: `Skyrim Special Edition GOG`).
 
-- Строка `Меню SubtitleScaler зарегистрировано в SKSE Menu Framework` означает, что меню подключено. Строка `Плагин собран без поддержки SKSE Menu Framework` означает, что DLL собрана без меню.
-- Строка `[Имя] масштаб ...% применён` означает, что секция работает. Для элементов окна диалога строка появляется после первого открытия окна.
-- Строка `[Имя] элемент не найден` означает, что в вашем интерфейсе другое имя меню или путь. Запустите сборку вручную (**Actions → Run workflow**) с включённой галочкой `dump`: в лог будет записана структура меню. Найдите там нужный элемент и пропишите его путь в `Paths` этой секции.
+- The line `SubtitleScaler menu registered in SKSE Menu Framework` means the menu is connected. The line `Plugin was built without SKSE Menu Framework support` means the DLL was built without the menu.
+- A line like `[Name] scale ...% applied` means the section works. For dialogue window elements the line appears after the window is opened for the first time.
+- A line like `[Name] element not found` means your interface uses a different menu name or path. Run the build manually (**Actions → Run workflow**) with the `dump` box ticked: the menu structure will be written to the log. Find the element you need there and put its path in the `Paths` of that section.
+- Lines like `text field for width limiting: ...` and `field '...': width ...` show how `MaxWidth` was applied.
 
-## Ограничения
+## Limitations
 
-- Пути к элементам (`HUDMovieBaseInstance.SubtitleTextHolder`, `DialogueMenu_mc.SubtitleText`, `DialogueMenu_mc.TopicListHolder`) заданы по стандартному интерфейсу Skyrim и могут отличаться при установленных заменах интерфейса. Исправляются через `Paths`.
-- Увеличение выполняется масштабированием элемента, поэтому текст может стать менее чётким, а элемент может сместиться. Для этого есть `OffsetX` и `OffsetY`.
+- The element paths (`HUDMovieBaseInstance.SubtitleTextHolder`, `DialogueMenu_mc.SubtitleText`, `DialogueMenu_mc.TopicListHolder`) are based on the standard Skyrim interface and may differ if interface replacers are installed. They can be fixed through `Paths`.
+- Enlarging is done by scaling the element, so the text may become less sharp and the element may shift. `OffsetX` and `OffsetY` are there for that.
 
-## Структура проекта
+## Project structure
 
 ```
-src/main.cpp        точка входа, лог, события SKSE
-src/Settings.*      чтение INI
-src/Subtitles.*     применение масштаба к элементам интерфейса через Scaleform
-src/Papyrus.*       нативные функции для Papyrus
-src/UI.*            меню для SKSE Menu Framework
-CMakeLists.txt, vcpkg*.json   сборка (CommonLibSSE NG через vcpkg)
-.github/workflows/build.yml   сборка в GitHub Actions
+src/main.cpp        entry point, log, SKSE events
+src/Settings.*      INI reading and writing
+src/Subtitles.*     applying the scale to interface elements through Scaleform
+src/Papyrus.*       native functions for Papyrus
+src/UI.*            menu for SKSE Menu Framework
+CMakeLists.txt, vcpkg*.json   build (CommonLibSSE NG via vcpkg)
+.github/workflows/build.yml   build on GitHub Actions
 ```

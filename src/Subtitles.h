@@ -4,17 +4,17 @@
 
 #include <memory>
 
-// Применение масштаба к элементам интерфейса (субтитры, варианты ответа, уведомления и т.д.).
+// Applies the scale to interface elements (subtitles, response options).
 namespace Subtitles
 {
-	// Ставит применение масштаба одной цели в очередь UI-потока. Можно вызывать из любого потока.
-	// a_withRetry = true: если меню ещё не загрузилось, повторять попытки в течение ~10 секунд.
+	// Queues applying the scale to one target on the UI thread. Can be called from any thread.
+	// a_withRetry = true: if the menu has not loaded yet, keep retrying for ~10 seconds.
 	void Apply(const std::shared_ptr<Settings::Entry>& a_entry, bool a_withRetry);
 
-	// Применить настройки ко всем целям. Ожидание (retry) используется только для целей в HUD,
-	// остальные меню применяются при их открытии.
+	// Applies the settings to all targets. Waiting (retry) is used only for HUD targets,
+	// other menus are handled when they open.
 	void ApplyAll(bool a_withRetry);
 
-	// Подписывается на открытие/закрытие меню (нужно вызвать после kDataLoaded).
+	// Subscribes to menu open/close events (call after kDataLoaded).
 	void RegisterMenuSink();
 }
