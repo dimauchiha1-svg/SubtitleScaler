@@ -8,3 +8,8 @@
 #include <SKSE/SKSE.h>
 
 #include <spdlog/spdlog.h>
+
+// Сгенерированный файл плагина использует литералы вида "..."sv, им нужен этот using.
+using namespace std::literals;
+
+namespace logger = SKSE::log;
