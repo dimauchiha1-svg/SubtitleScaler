@@ -32,6 +32,8 @@ namespace Settings
 		std::atomic<float> scale{ 150.0f };  // в процентах, 100 = как в оригинале
 		std::atomic<float> offsetX{ 0.0f };  // сдвиг по X в единицах Flash-сцены
 		std::atomic<float> offsetY{ 0.0f };  // сдвиг по Y в единицах Flash-сцены
+		// true: при увеличении элемент остаётся на месте по центру, а не растёт вправо от левого края.
+		std::atomic<bool> centerAnchor{ false };
 
 		std::string GetMenu() const
 		{
@@ -59,6 +61,7 @@ namespace Settings
 		{
 			std::optional<double> baseX;
 			std::optional<double> baseY;
+			std::optional<double> baseW;  // ширина элемента при масштабе 100%
 			double                lastLoggedScale = -1.0;
 			bool                  loggedMissing = false;
 		} ui;

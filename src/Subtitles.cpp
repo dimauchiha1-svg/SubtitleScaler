@@ -5,6 +5,7 @@
 #include <RE/Skyrim.h>
 #include <SKSE/SKSE.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <string>
@@ -108,12 +109,15 @@ namespace
 			}
 
 			// Свежесозданный клип имеет масштаб 100: запоминаем его исходную позицию.
-			RE::GFxValue vx, vy;
+			RE::GFxValue vx, vy, vw;
 			clip.GetMember("_x", &vx);
 			clip.GetMember("_y", &vy);
+			clip.GetMember("_width", &vw);
 			if (std::abs(currentScale - 100.0) < 0.01 || !st.baseX || !st.baseY) {
 				st.baseX = vx.IsNumber() ? vx.GetNumber() : 0.0;
 				st.baseY = vy.IsNumber() ? vy.GetNumber() : 0.0;
+				// Ширина при 100%: если клип уже увеличен, пересчитываем обратно.
+				st.baseW = vw.IsNumber() ? vw.GetNumber() * 100.0 / std::max(currentScale, 1.0) : 0.0;
 			}
 
 			// Выключенная цель возвращается к исходному виду.
@@ -123,7 +127,12 @@ namespace
 
 			clip.SetMember("_xscale", RE::GFxValue(target));
 			clip.SetMember("_yscale", RE::GFxValue(target));
-			clip.SetMember("_x", RE::GFxValue(*st.baseX + ox));
+			// Центрирование: сдвигаем влево на половину прироста ширины, чтобы центр элемента не уезжал.
+			const double anchorShift = (on && a_entry->centerAnchor.load() && st.baseW) ?
+			                               -(target / 100.0 - 1.0) * (*st.baseW) / 2.0 :
+			                               0.0;
+
+			clip.SetMember("_x", RE::GFxValue(*st.baseX + ox + anchorShift));
 			clip.SetMember("_y", RE::GFxValue(*st.baseY + oy));
 
 			if (std::abs(st.lastLoggedScale - target) > 0.001) {
@@ -134,6 +143,7 @@ namespace
 			if (!on) {
 				st.baseX.reset();
 				st.baseY.reset();
+				st.baseW.reset();
 			}
 			return true;
 		}
@@ -206,6 +216,7 @@ namespace
 						task->AddUITask([entry]() {
 							entry->ui.baseX.reset();
 							entry->ui.baseY.reset();
+							entry->ui.baseW.reset();
 							entry->ui.loggedMissing = false;
 						});
 					}

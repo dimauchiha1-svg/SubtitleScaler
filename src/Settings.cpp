@@ -56,8 +56,10 @@ namespace
 			std::vector<std::shared_ptr<E>> v;
 			v.push_back(std::make_shared<E>("HUD", "HUD Menu",
 				std::vector<std::string>{ "_root.HUDMovieBaseInstance.SubtitleTextHolder" }, true));
-			v.push_back(std::make_shared<E>("Dialogue", "Dialogue Menu",
-				std::vector<std::string>{ "_root.DialogueMenu_mc.SubtitleText" }, true));
+			auto dialogue = std::make_shared<E>("Dialogue", "Dialogue Menu",
+				std::vector<std::string>{ "_root.DialogueMenu_mc.SubtitleText" }, true);
+			dialogue->centerAnchor = true;  // текст в окне диалога по центру: без этого он уезжает вправо
+			v.push_back(std::move(dialogue));
 			v.push_back(std::make_shared<E>("PlayerChoices", "Dialogue Menu",
 				std::vector<std::string>{ "_root.DialogueMenu_mc.TopicListHolder" }, false));
 			return v;
@@ -248,6 +250,8 @@ namespace Settings
 				if (ParseFloat(val, f)) {
 					current->offsetY = f;
 				}
+			} else if (key == "anchor") {
+				current->centerAnchor = (Lower(val) == "center");
 			} else if (key == "menu") {
 				current->SetMenu(val);
 			} else if (key == "paths") {

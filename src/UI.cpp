@@ -43,8 +43,28 @@ namespace
 		return a_name.c_str();
 	}
 
-	void __stdcall Render()
+	void RenderBody()
 	{
+		// Диагностика: первый вызов пишется в лог ДО обращения к ImGui. Если игра вылетает при открытии
+		// страницы, по логу видно, дошло ли дело до ImGui и что вернул GetCurrentContext().
+		static bool s_logged = false;
+		if (!s_logged) {
+			s_logged = true;
+			spdlog::info("Меню: первый вызов Render");
+			spdlog::info("Меню: ImGui {}, контекст {}", ImGui::GetVersion(), static_cast<const void*>(ImGui::GetCurrentContext()));
+		}
+
+		// Нет контекста ImGui значит, наша копия ImGui не та, которую использует фреймворк.
+		// Рисовать нельзя (вылет), поэтому показываем ничего и пишем причину в лог.
+		if (!ImGui::GetCurrentContext()) {
+			static bool s_warned = false;
+			if (!s_warned) {
+				s_warned = true;
+				spdlog::error("Меню: у ImGui нет текущего контекста. Версия ImGui в плагине не совпадает с фреймворком.");
+			}
+			return;
+		}
+
 		ImGui::TextWrapped("Changes are applied immediately. World subtitles update on the next spoken line, "
 						   "dialogue window elements the next time the window is opened.");
 
@@ -99,6 +119,38 @@ namespace
 		}
 		if (g_status[0] != '\0') {
 			ImGui::TextUnformatted(g_status);
+		}
+	}
+
+	// Если ImGui недоступен (например, не найден imgui.dll или в нём нет нужной функции),
+	// Windows бросает SEH-исключение. Ловим его, чтобы не уронить игру: меню отключается до перезапуска.
+	bool g_menuBroken = false;
+
+	void LogMenuBroken()
+	{
+		spdlog::error("Меню: вызов ImGui привёл к аварии (вероятно, нет imgui.dll или версия ImGui не совпадает "
+					  "с фреймворком). Страница меню отключена до перезапуска игры, настройки доступны в INI.");
+	}
+
+	void __stdcall Render()
+	{
+		if (g_menuBroken) {
+			return;
+		}
+
+		// В этой функции нет объектов с деструкторами, поэтому здесь можно использовать __try.
+		__try {
+			RenderBody();
+		} __except (EXCEPTION_EXECUTE_HANDLER) {
+			g_menuBroken = true;
+		}
+
+		if (g_menuBroken) {
+			static bool s_logged = false;
+			if (!s_logged) {
+				s_logged = true;
+				LogMenuBroken();
+			}
 		}
 	}
 }
