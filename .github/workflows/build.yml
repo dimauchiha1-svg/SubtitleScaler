@@ -6,11 +6,11 @@ on:
   workflow_dispatch:
     inputs:
       dump:
-        description: "Писать структуру меню в лог (отладка путей к элементам)"
+        description: "Log the menu structure (debugging element paths)"
         type: boolean
         default: false
       menu:
-        description: "Собрать меню для SKSE Menu Framework 3"
+        description: "Build the SKSE Menu Framework 3 settings menu"
         type: boolean
         default: true
 
@@ -27,7 +27,7 @@ jobs:
         with:
           arch: x64
 
-      # Для меню нужен только заголовок SKSEMenuFramework.h из репозитория API.
+      # The menu only needs the SKSEMenuFramework.h header from the API repository.
       - name: Fetch SKSE Menu Framework API header
         id: api
         shell: pwsh
@@ -40,7 +40,7 @@ jobs:
               $menu = "ON"
               $dir = "$env:GITHUB_WORKSPACE/mfapi"
             } else {
-              Write-Host "::warning::Не удалось скачать заголовок SKSE Menu Framework, плагин будет собран без меню"
+              Write-Host "::warning::Could not download the SKSE Menu Framework header, the plugin will be built without the menu"
             }
           }
           "menu=$menu" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -74,7 +74,7 @@ jobs:
         shell: pwsh
         run: |
           $dll = Get-ChildItem -Path build -Recurse -Filter SubtitleScaler.dll | Select-Object -First 1
-          if (-not $dll) { throw "SubtitleScaler.dll не найден" }
+          if (-not $dll) { throw "SubtitleScaler.dll not found" }
           New-Item -ItemType Directory -Force -Path dist/Data/SKSE/Plugins | Out-Null
           New-Item -ItemType Directory -Force -Path dist/Data/Scripts/Source | Out-Null
           Copy-Item $dll.FullName dist/Data/SKSE/Plugins/
