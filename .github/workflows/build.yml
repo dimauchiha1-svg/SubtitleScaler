@@ -64,6 +64,24 @@ jobs:
       - name: Build
         run: cmake --build build --config Release
 
+      - name: Diagnostics (dependencies of the DLL and SDK contents)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $dll = Get-ChildItem -Path build -Recurse -Filter SubtitleScaler.dll | Select-Object -First 1
+          Write-Host "=== DLL dependencies of SubtitleScaler.dll ==="
+          if ($dll) { dumpbin /dependents $dll.FullName }
+          Write-Host "=== SDK files (Mods and ImGui) ==="
+          if (Test-Path sdk) {
+            Get-ChildItem -Path sdk/Mods, sdk/ImGui -Recurse -File -ErrorAction SilentlyContinue |
+              ForEach-Object { "{0}  {1} bytes" -f $_.FullName.Substring($PWD.Path.Length), $_.Length }
+            Write-Host "=== Dependencies of framework DLLs in the SDK ==="
+            Get-ChildItem -Path sdk/Mods -Recurse -Filter *.dll -ErrorAction SilentlyContinue | ForEach-Object {
+              Write-Host "--- $($_.FullName)"
+              dumpbin /dependents $_.FullName | Select-String -Pattern "\.dll"
+            }
+          }
+
       - name: Collect mod files
         shell: pwsh
         run: |
