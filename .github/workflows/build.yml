@@ -10,7 +10,7 @@ on:
         type: boolean
         default: false
       menu:
-        description: "Собрать меню для SKSE Menu Framework"
+        description: "Собрать меню для SKSE Menu Framework 3"
         type: boolean
         default: true
 
@@ -27,25 +27,24 @@ jobs:
         with:
           arch: x64
 
-      - name: Fetch SKSE Menu Framework SDK
-        id: sdk
+      # Для меню нужен только заголовок SKSEMenuFramework.h из репозитория API.
+      - name: Fetch SKSE Menu Framework API header
+        id: api
         shell: pwsh
         run: |
           $menu = "OFF"
-          $sdk = ""
+          $dir = ""
           if ("${{ inputs.menu }}" -ne "false") {
-            git clone --depth 1 https://github.com/Thiago099/SKSE-Menu-Framework-SDK.git sdk
-            if ($LASTEXITCODE -eq 0) {
+            git clone --depth 1 https://github.com/QTR-Modding/SKSE-Menu-Framework-3-API.git mfapi
+            if ($LASTEXITCODE -eq 0 -and (Test-Path mfapi/SKSEMenuFramework.h)) {
               $menu = "ON"
-              $sdk = "$env:GITHUB_WORKSPACE/sdk"
-              Write-Host "SDK files:"
-              Get-ChildItem -Path sdk -Recurse -Include SKSEMenuFramework.* | ForEach-Object { Write-Host $_.FullName }
+              $dir = "$env:GITHUB_WORKSPACE/mfapi"
             } else {
-              Write-Host "::warning::Не удалось скачать SKSE Menu Framework SDK, плагин будет собран без меню"
+              Write-Host "::warning::Не удалось скачать заголовок SKSE Menu Framework, плагин будет собран без меню"
             }
           }
           "menu=$menu" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "sdk=$sdk" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "dir=$dir" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Configure
         shell: pwsh
@@ -58,29 +57,18 @@ jobs:
             -DVCPKG_TARGET_TRIPLET=x64-windows-static `
             -DVCPKG_HOST_TRIPLET=x64-windows-static `
             -DSUBTITLESCALER_DUMP=$dump `
-            -DSUBTITLESCALER_MENU=${{ steps.sdk.outputs.menu }} `
-            "-DMENU_SDK_DIR=${{ steps.sdk.outputs.sdk }}"
+            -DSUBTITLESCALER_MENU=${{ steps.api.outputs.menu }} `
+            "-DMENU_API_DIR=${{ steps.api.outputs.dir }}"
 
       - name: Build
         run: cmake --build build --config Release
 
-      - name: Diagnostics (dependencies of the DLL and SDK contents)
+      - name: Diagnostics (dependencies of the DLL)
         shell: pwsh
         continue-on-error: true
         run: |
           $dll = Get-ChildItem -Path build -Recurse -Filter SubtitleScaler.dll | Select-Object -First 1
-          Write-Host "=== DLL dependencies of SubtitleScaler.dll ==="
           if ($dll) { dumpbin /dependents $dll.FullName }
-          Write-Host "=== SDK files (Mods and ImGui) ==="
-          if (Test-Path sdk) {
-            Get-ChildItem -Path sdk/Mods, sdk/ImGui -Recurse -File -ErrorAction SilentlyContinue |
-              ForEach-Object { "{0}  {1} bytes" -f $_.FullName.Substring($PWD.Path.Length), $_.Length }
-            Write-Host "=== Dependencies of framework DLLs in the SDK ==="
-            Get-ChildItem -Path sdk/Mods -Recurse -Filter *.dll -ErrorAction SilentlyContinue | ForEach-Object {
-              Write-Host "--- $($_.FullName)"
-              dumpbin /dependents $_.FullName | Select-String -Pattern "\.dll"
-            }
-          }
 
       - name: Collect mod files
         shell: pwsh
