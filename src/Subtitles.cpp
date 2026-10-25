@@ -216,7 +216,10 @@ namespace
 				st.baseX = vx.IsNumber() ? vx.GetNumber() : 0.0;
 				st.baseY = vy.IsNumber() ? vy.GetNumber() : 0.0;
 				// Width at 100%: if the clip is already enlarged, recompute back.
-				st.baseW = vw.IsNumber() ? vw.GetNumber() * 100.0 / std::max(currentScale, 1.0) : 0.0;
+				// Skipped while we limit the width ourselves: the measured width is then our own limit.
+				if (!st.limited || !st.baseW) {
+					st.baseW = vw.IsNumber() ? vw.GetNumber() * 100.0 / std::max(currentScale, 1.0) : 0.0;
+				}
 			}
 
 			FindTextField(a_entry, clip);
