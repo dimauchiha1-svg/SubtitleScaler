@@ -19,7 +19,6 @@ namespace
 	constexpr int kMaxAttempts = 20;  // 20 * 500 ms = 10 seconds of waiting for the menu
 
 	void QueueApply(const EntryPtr& a_entry, int a_attempt, bool a_withRetry);
-	void ProbeNames(RE::GFxMovieView* a_movie);
 
 	// Clips, text fields and arrays in Scaleform have a type >= Object (6, 7, 8 in Scaleform numbering).
 	// Checked by type number, because IsObject() means either only "object"
@@ -239,6 +238,11 @@ namespace
 
 	bool TryApply(const EntryPtr& a_entry, RE::GFxMovieView* a_movie)
 	{
+		// The HUD speaker name is handled in the per-frame hook (EnforceHudName): it is part of the subtitle text.
+		if (a_entry->name == "HUDName") {
+			return true;
+		}
+
 		auto&      st = a_entry->ui;
 		const bool on = a_entry->enabled.load();
 
@@ -356,44 +360,10 @@ namespace
 			}).detach();
 		} else if (a_withRetry && !a_entry->ui.loggedMissing) {
 			a_entry->ui.loggedMissing = true;
-			if (a_entry->name.ends_with("Name")) {
-				if (const auto ui2 = RE::UI::GetSingleton()) {
-					if (const auto menu2 = ui2->GetMenu(menuName); menu2 && menu2->uiMovie) {
-						ProbeNames(menu2->uiMovie.get());
-					}
-				}
-			}
 			spdlog::warn("[{}] element not found at any path from the INI (Paths) in menu '{}'. "
 						 "Check the menu name and path, or build the plugin with SUBTITLESCALER_DUMP=ON "
 						 "to print the menu structure to the log.",
 				a_entry->name, menuName);
-		}
-	}
-
-	// Diagnostics for the speaker name targets: which likely member names exist near the subtitle text.
-	void ProbeNames(RE::GFxMovieView* a_movie)
-	{
-		static constexpr const char* kBases[] = { "_root.HUDMovieBaseInstance", "_root.HUDMovieBaseInstance.SubtitleTextHolder", "_root.DialogueMenu_mc" };
-		static constexpr const char* kNames[] = { "SpeakerName", "SpeakerNameText", "speakerName", "NameText", "Name", "NameField", "Speaker", "SubtitleName",
-			"SubtitleText", "SubtitleTextField", "textField", "TextField", "SpeakerNameHolder", "NameHolder", "TopicListHolder" };
-		spdlog::info("Probe: candidate members of the subtitle/dialogue clips");
-		for (const auto* base : kBases) {
-			RE::GFxValue obj;
-			if (!a_movie->GetVariable(&obj, base) || !IsClip(obj)) {
-				spdlog::info("  {}: not found", base);
-				continue;
-			}
-			for (const auto* name : kNames) {
-				RE::GFxValue child;
-				if (GetMemberSafe(obj, name, child)) {
-					RE::GFxValue text;
-					if (IsClip(child) && GetMemberSafe(child, "text", text) && text.IsString()) {
-						spdlog::info("  {}.{}: type {}, text '{}'", base, name, static_cast<int>(child.GetType()), text.GetString());
-					} else {
-						spdlog::info("  {}.{}: type {}", base, name, static_cast<int>(child.GetType()));
-					}
-				}
-			}
 		}
 	}
 
@@ -476,17 +446,42 @@ namespace
 	AdvanceMovie_t g_origHudAdvance = nullptr;
 	AdvanceMovie_t g_origDialogueAdvance = nullptr;
 
-	// Diagnostics: logs the first few subtitle texts shown in the HUD (to see how the speaker name is stored).
-	void LogHudSample(RE::IMenu* a_menu)
+	// ---- Speaker name inside the HUD subtitle ----
+	// In the HUD the name is part of the subtitle text ("Name: line"), drawn as a separate font span.
+	// It cannot be moved separately, but its color and size can be set with a text format on the name range.
+
+	// Number of UTF-16 code units in the first a_bytes bytes of a UTF-8 string.
+	std::size_t Utf16Length(const std::string& a_utf8, std::size_t a_bytes)
 	{
-		static int         s_count = 0;
-		static std::string s_last;
-		if (s_count >= 6) {
+		std::size_t n = 0;
+		for (std::size_t i = 0; i < a_bytes && i < a_utf8.size(); ++i) {
+			const auto c = static_cast<unsigned char>(a_utf8[i]);
+			if ((c & 0xC0) != 0x80) {
+				++n;
+				if (c >= 0xF0) {
+					++n;
+				}
+			}
+		}
+		return n;
+	}
+
+	void EnforceHudName(RE::IMenu* a_menu)
+	{
+		const auto name = Settings::Find("HUDName");
+		const auto hud = Settings::Find("HUD");
+		if (!name || !hud || !name->enabled.load() || hud->ui.tfName.empty()) {
 			return;
 		}
+		const int  color = name->color.load();
+		const auto scale = static_cast<double>(name->scale.load());
+		const bool resize = std::abs(scale - 100.0) >= 0.5;
+		if (color < 0 && !resize) {
+			return;
+		}
+
 		auto* movie = a_menu->uiMovie.get();
-		const auto hud = Settings::Find("HUD");
-		if (!movie || !hud || hud->ui.tfName.empty()) {
+		if (!movie) {
 			return;
 		}
 		for (const auto& path : hud->GetPaths()) {
@@ -498,13 +493,41 @@ namespace
 			if (!GetTextFieldValue(hud, clip, tf)) {
 				return;
 			}
-			RE::GFxValue text, html;
-			if (GetMemberSafe(tf, "text", text) && text.IsString() && text.GetString()[0] != '\0' && s_last != text.GetString()) {
-				s_last = text.GetString();
-				++s_count;
-				spdlog::info("HUD subtitle sample: text='{}' html='{}'", s_last,
-					GetMemberSafe(tf, "htmlText", html) && html.IsString() ? html.GetString() : "(none)");
+
+			RE::GFxValue text;
+			if (!GetMemberSafe(tf, "text", text) || !text.IsString()) {
+				return;
 			}
+			const std::string s = text.GetString();
+			const auto        sep = s.find(": ");
+			if (sep == std::string::npos || sep == 0 || sep > 120) {
+				return;  // no speaker name in this subtitle
+			}
+			const auto total = Utf16Length(s, s.size());
+			const auto end = Utf16Length(s, sep);
+			if (end + 2 >= total) {
+				return;
+			}
+
+			RE::GFxValue fmt;
+			movie->CreateObject(&fmt, "TextFormat");
+			if (color >= 0) {
+				fmt.SetMember("color", RE::GFxValue(static_cast<double>(color)));
+			}
+			if (resize) {
+				// The base size is read from the last character (the line itself), which this code never resizes.
+				double       base = 20.0;
+				RE::GFxValue cur;
+				const RE::GFxValue probe[2] = { RE::GFxValue(static_cast<double>(total - 1)), RE::GFxValue(static_cast<double>(total)) };
+				RE::GFxValue size;
+				if (tf.Invoke("getTextFormat", &cur, probe, 2) && IsClip(cur) && GetMemberSafe(cur, "size", size) && size.IsNumber() && size.GetNumber() > 0.0) {
+					base = size.GetNumber();
+				}
+				fmt.SetMember("size", RE::GFxValue(base * scale / 100.0));
+			}
+
+			const RE::GFxValue args[3] = { RE::GFxValue(0.0), RE::GFxValue(static_cast<double>(end)), fmt };
+			tf.Invoke("setTextFormat", nullptr, args, 3);
 			return;
 		}
 	}
@@ -512,8 +535,8 @@ namespace
 	void Hook_HudAdvance(RE::IMenu* a_menu, float a_interval, std::uint32_t a_time)
 	{
 		g_origHudAdvance(a_menu, a_interval, a_time);
-		LogHudSample(a_menu);
 		EnforceColor(a_menu, "HUD Menu");
+		EnforceHudName(a_menu);
 	}
 
 	void Hook_DialogueAdvance(RE::IMenu* a_menu, float a_interval, std::uint32_t a_time)

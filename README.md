@@ -9,7 +9,7 @@ It enlarges subtitles and response options in dialogues. Each element is configu
 | `[HUD]` | Subtitles when an NPC talks to another NPC or addresses the player without a dialogue window (greetings, guard shouts) | enabled, 150% |
 | `[Dialogue]` | The NPC's line in the dialogue window with the player | enabled, 150% |
 | `[PlayerChoices]` | The player's response options in the dialogue window | disabled |
-| `[HUDName]` | The speaker name in world subtitles, with its own scale, offset and color | disabled |
+| `[HUDName]` | The speaker name in world subtitles, with its own scale and color | disabled |
 | `[DialogueName]` | The speaker name in the dialogue window, with its own scale, offset and color | disabled |
 
 > VR is not included in this build: it is built on `commonlibsse-ng-flatrim` (SE + AE).
@@ -103,7 +103,10 @@ Plugin log: `Documents\My Games\Skyrim Special Edition\SKSE\SubtitleScaler.log` 
 
 ## Speaker names
 
-`[HUDName]` and `[DialogueName]` are separate targets for the speaker name, so the name can have its own color, size and position. They are disabled by default. The element paths are best guesses for the standard interface. If the log contains `[HUDName] element not found`, it also contains a `Probe:` section with the member names that exist near the subtitle text, and `HUD subtitle sample:` lines showing how the subtitle text is stored (for example, whether the speaker name is part of the same text field). Send those lines to the author.
+`[HUDName]` and `[DialogueName]` are separate targets for the speaker name, so the name can have its own color and size. They are disabled by default.
+
+- `[DialogueName]` is a separate element of the dialogue window, so it supports `Scale`, `Color`, `OffsetX` and `OffsetY`.
+- `[HUDName]` is part of the subtitle text in the world (the game draws "Name: line" as one text with separate font spans), so only `Scale` and `Color` work for it. The position of the name cannot be changed separately; use `[HUD]` to move the whole subtitle. Because the game rewrites the text on every new subtitle, the format is re-applied every frame while a subtitle is shown.
 
 ## Limitations
 

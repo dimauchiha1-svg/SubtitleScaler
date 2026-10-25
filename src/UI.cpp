@@ -68,7 +68,7 @@ namespace
 			return "Player response options";
 		}
 		if (a_name == "HUDName") {
-			return "Speaker name in world subtitles";
+			return "Speaker name in world subtitles (color and size only)";
 		}
 		if (a_name == "DialogueName") {
 			return "Speaker name in the dialogue window";
@@ -108,15 +108,18 @@ namespace
 				changed = true;
 			}
 
+			if (e->name == "HUDName") {
+				ImGuiMCP::TextWrapped("The name is part of the subtitle text, so only its scale and color can be changed (not the position).");
+			}
 			float offset[2] = { e->offsetX.load(), e->offsetY.load() };
-			if (ImGuiMCP::DragFloat2("Offset X / Y", offset, 1.0f, -500.0f, 500.0f, "%.0f")) {
+			if (e->name != "HUDName" && ImGuiMCP::DragFloat2("Offset X / Y", offset, 1.0f, -500.0f, 500.0f, "%.0f")) {
 				e->offsetX = offset[0];
 				e->offsetY = offset[1];
 				changed = true;
 			}
 
 			float maxWidth = e->maxWidth.load();
-			if (ImGuiMCP::SliderFloat("Max width (0 = off)", &maxWidth, 0.0f, 1280.0f, "%.0f")) {
+			if (e->name != "HUDName" && ImGuiMCP::SliderFloat("Max width (0 = off)", &maxWidth, 0.0f, 1280.0f, "%.0f")) {
 				e->maxWidth = maxWidth;
 				changed = true;
 			}
