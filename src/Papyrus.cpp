@@ -58,6 +58,22 @@ namespace
 		return e && e->enabled.load();
 	}
 
+	// afRGB: 0xRRGGBB (for example 16776960 = yellow), a negative value restores the original color.
+	void SetTargetColor(RE::StaticFunctionTag*, std::string_view a_name, std::int32_t a_rgb)
+	{
+		if (const auto e = Settings::Find(a_name)) {
+			e->color = a_rgb < 0 ? -1 : (a_rgb & 0xFFFFFF);
+			Subtitles::Apply(e, false);
+		}
+	}
+
+	// Returns 0xRRGGBB, or -1 if the original color is used.
+	std::int32_t GetTargetColor(RE::StaticFunctionTag*, std::string_view a_name)
+	{
+		const auto e = Settings::Find(a_name);
+		return e ? e->color.load() : -1;
+	}
+
 	void Reapply(RE::StaticFunctionTag*)
 	{
 		Subtitles::ApplyAll(true);
@@ -80,6 +96,8 @@ namespace Papyrus
 		a_vm->RegisterFunction("SetOffset", kScriptName, SetOffset);
 		a_vm->RegisterFunction("SetEnabled", kScriptName, SetEnabled);
 		a_vm->RegisterFunction("IsEnabled", kScriptName, IsEnabled);
+		a_vm->RegisterFunction("SetTargetColor", kScriptName, SetTargetColor);
+		a_vm->RegisterFunction("GetTargetColor", kScriptName, GetTargetColor);
 		a_vm->RegisterFunction("Reapply", kScriptName, Reapply);
 		a_vm->RegisterFunction("ReloadConfig", kScriptName, ReloadConfig);
 		return true;

@@ -49,6 +49,7 @@ If SKSE Menu Framework is installed, a **SubtitleScaler → Subtitles** section 
 - a **Scale (%)** slider (50–400);
 - **Offset X / Y** fields;
 - a **Max width** slider;
+- a **Custom text color** checkbox with a color picker (`HUD` and `Dialogue` only);
 - an **Original size** button (returns to 100% and zero offset).
 
 Changes are applied immediately. At the bottom there are two buttons: **Save to INI** (writes the values to `SubtitleScaler.ini`, comments in the file are preserved) and **Reload from INI** (re-reads the file). If the framework is not installed, the plugin works as before and can be configured through the INI.
@@ -65,6 +66,7 @@ Each `[Name]` section describes one interface element. The parameters are the sa
 | `Scale` | Scale in percent, 50–400. `100` = original, `150` = one and a half times larger |
 | `OffsetX`, `OffsetY` | Offset. If the enlarged element goes off the edge of the screen, adjust the value (a negative `OffsetY` moves the element up) |
 | `MaxWidth` | Maximum visible width of the element (the Skyrim stage is 1280 wide). If the enlarged text is wider, long lines wrap onto new lines instead of running off the screen edge. `0` = no limit. Default is `1100` for subtitles |
+| `Color` | Text color as `RRGGBB` (for example `FFFF00` = yellow). Empty = keep the original color. Works for `[HUD]` and `[Dialogue]`; the list of response options is not supported |
 | `Anchor` | `left` or `center`. When enlarged, the element either grows to the right from its left edge (`left`) or stays in place, centered (`center`). Default for `[Dialogue]` is `center` |
 | `Menu` | Internal name of the menu that contains the element |
 | `Paths` | Path to the element inside the menu (several separated by `|`, the first one found is used) |
@@ -80,6 +82,8 @@ SubtitleScaler.SetScale(200.0)                          ; all targets twice as l
 SubtitleScaler.SetTargetScale("Dialogue", 170.0)        ; dialogue window lines only
 SubtitleScaler.SetEnabled("PlayerChoices", true)        ; enable response options
 SubtitleScaler.SetOffset("HUD", 0.0, -40.0)             ; move subtitles up
+SubtitleScaler.SetTargetColor("HUD", 16776960)          ; yellow subtitles (0xFFFF00 as a decimal number)
+SubtitleScaler.SetTargetColor("HUD", -1)                ; back to the original color
 Float s = SubtitleScaler.GetScale("Dialogue")
 SubtitleScaler.ReloadConfig()                           ; re-read the INI
 ```

@@ -24,6 +24,13 @@ Function SetEnabled(String asName, Bool abEnabled) global native
 ; Whether the target is enabled.
 Bool Function IsEnabled(String asName) global native
 
+; Sets the text color of a target as 0xRRGGBB written as a decimal number (for example 16776960 = yellow, 16777215 = white).
+; A negative value restores the original color. Works for "HUD" and "Dialogue".
+Function SetTargetColor(String asName, Int aiRGB) global native
+
+; Returns the custom text color of a target as 0xRRGGBB, or -1 if the original color is used.
+Int Function GetTargetColor(String asName) global native
+
 ; Apply the current settings again (for example, after loading a save).
 Function Reapply() global native
 

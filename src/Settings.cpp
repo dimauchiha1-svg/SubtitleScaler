@@ -117,7 +117,12 @@ namespace Settings
 				{ "Scale", fmt(e->scale.load()) },
 				{ "OffsetX", fmt(e->offsetX.load()) },
 				{ "OffsetY", fmt(e->offsetY.load()) },
-				{ "MaxWidth", fmt(e->maxWidth.load()) }
+				{ "MaxWidth", fmt(e->maxWidth.load()) },
+				{ "Color", e->color.load() >= 0 ? [&] {
+					char buf[8];
+					std::snprintf(buf, sizeof(buf), "%06X", e->color.load() & 0xFFFFFF);
+					return std::string(buf);
+				}() : std::string() }
 			};
 
 			// Section bounds: header = the "[Name]" line, end = start of the next section.
@@ -257,6 +262,16 @@ namespace Settings
 			} else if (key == "maxwidth") {
 				if (ParseFloat(val, f)) {
 					current->maxWidth = std::max(0.0f, f);
+				}
+			} else if (key == "color") {
+				auto hex = val;
+				if (!hex.empty() && hex[0] == '#') {
+					hex.erase(0, 1);
+				}
+				if (hex.size() == 6 && std::all_of(hex.begin(), hex.end(), [](unsigned char c) { return std::isxdigit(c) != 0; })) {
+					current->color = static_cast<int>(std::stoul(hex, nullptr, 16));
+				} else {
+					current->color = -1;  // empty or invalid: original color
 				}
 			} else if (key == "anchor") {
 				current->centerAnchor = (Lower(val) == "center");

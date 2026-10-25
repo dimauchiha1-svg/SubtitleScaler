@@ -17,4 +17,8 @@ namespace Subtitles
 
 	// Subscribes to menu open/close events (call after kDataLoaded).
 	void RegisterMenuSink();
+
+	// Installs per-frame hooks on the HUD and dialogue menus that keep the custom text color
+	// (the game may reset the color when it shows a new line). Call after kDataLoaded.
+	void InstallColorHooks();
 }

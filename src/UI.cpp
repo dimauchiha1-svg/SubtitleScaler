@@ -10,6 +10,7 @@
 #include <Windows.h>
 
 #include <atomic>
+#include <algorithm>
 #include <cstdarg>
 #include <cstdint>
 #include <filesystem>
@@ -33,7 +34,7 @@ namespace
 	{
 		static constexpr const char* kNames[] = {
 			"AddSectionItem", "igGetVersion", "igGetCurrentContext", "igCheckbox", "igSliderFloat",
-			"igDragFloat2", "igButton", "igSameLine", "igSeparator", "igPushID_Str", "igPopID",
+			"igDragFloat2", "igColorEdit3", "igButton", "igSameLine", "igSeparator", "igPushID_Str", "igPopID",
 			"igTextV", "igTextWrappedV", "igTextUnformatted"
 		};
 
@@ -112,6 +113,25 @@ namespace
 			if (ImGuiMCP::SliderFloat("Max width (0 = off)", &maxWidth, 0.0f, 1280.0f, "%.0f")) {
 				e->maxWidth = maxWidth;
 				changed = true;
+			}
+
+			// Custom text color (only for targets that have a text field)
+			if (e->name != "PlayerChoices") {
+				bool useColor = e->color.load() >= 0;
+				if (ImGuiMCP::Checkbox("Custom text color", &useColor)) {
+					e->color = useColor ? 0xFFFFFF : -1;
+					changed = true;
+				}
+				if (useColor) {
+					const int c = e->color.load();
+					float     rgb[3] = { static_cast<float>((c >> 16) & 0xFF) / 255.0f, static_cast<float>((c >> 8) & 0xFF) / 255.0f,
+						static_cast<float>(c & 0xFF) / 255.0f };
+					if (ImGuiMCP::ColorEdit3("Text color", rgb)) {
+						const auto to8 = [](float f) { return std::clamp(static_cast<int>(f * 255.0f + 0.5f), 0, 255); };
+						e->color = (to8(rgb[0]) << 16) | (to8(rgb[1]) << 8) | to8(rgb[2]);
+						changed = true;
+					}
+				}
 			}
 
 			if (ImGuiMCP::Button("Original size")) {

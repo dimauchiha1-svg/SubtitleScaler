@@ -37,6 +37,9 @@ namespace Settings
 		// Maximum visible width of the element in Flash stage units (0 = no limit). If the enlarged
 		// element is wider, the text wraps onto new lines instead of running off the screen. Skyrim stage width: 1280.
 		std::atomic<float> maxWidth{ 0.0f };
+		// Text color as 0xRRGGBB, or -1 = keep the original color. Works for targets that have a text field
+		// (HUD and Dialogue subtitles); the list of response options is not supported.
+		std::atomic<int> color{ -1 };
 
 		std::string GetMenu() const
 		{
@@ -75,6 +78,11 @@ namespace Settings
 			bool                  warnedNoTf = false;
 			double                lastLoggedScale = -1.0;
 			bool                  loggedMissing = false;
+
+			// Text color (see color)
+			std::optional<double> origColor;  // original textColor, remembered before the first change
+			bool                  colorApplied = false;
+			bool                  warnedColor = false;
 		} ui;
 
 	private:

@@ -36,6 +36,7 @@ namespace
 			break;
 		case SKSE::MessagingInterface::kDataLoaded:
 			Subtitles::RegisterMenuSink();
+			Subtitles::InstallColorHooks();
 			Subtitles::ApplyAll(true);
 			break;
 		case SKSE::MessagingInterface::kPostLoadGame:

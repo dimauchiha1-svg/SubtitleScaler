@@ -185,6 +185,57 @@ namespace
 		st.limited = a_limit;
 	}
 
+	// Gets the text field of an element (found by FindTextField).
+	bool GetTextFieldValue(const EntryPtr& a_entry, RE::GFxValue& a_clip, RE::GFxValue& a_out)
+	{
+		const auto& name = a_entry->ui.tfName;
+		if (name.empty()) {
+			return false;
+		}
+		if (name == ".") {
+			a_out = a_clip;
+			return true;
+		}
+		return GetMemberSafe(a_clip, name.c_str(), a_out);
+	}
+
+	// Sets the custom text color, or restores the original one.
+	void ApplyColor(const EntryPtr& a_entry, RE::GFxValue& a_clip, bool a_on)
+	{
+		auto&     st = a_entry->ui;
+		const int color = a_on ? a_entry->color.load() : -1;
+		if (color < 0 && !st.colorApplied) {
+			return;
+		}
+
+		RE::GFxValue tf;
+		if (!GetTextFieldValue(a_entry, a_clip, tf)) {
+			if (color >= 0 && !st.warnedColor) {
+				st.warnedColor = true;
+				spdlog::warn("[{}] no text field found, the custom color is not supported for this target", a_entry->name);
+			}
+			return;
+		}
+
+		if (color >= 0) {
+			if (!st.origColor) {
+				RE::GFxValue cur;
+				st.origColor = (tf.GetMember("textColor", &cur) && cur.IsNumber()) ? cur.GetNumber() : 16777215.0;
+			}
+			tf.SetMember("textColor", RE::GFxValue(static_cast<double>(color)));
+			if (!st.colorApplied) {
+				spdlog::info("[{}] text color {:06X} applied", a_entry->name, color & 0xFFFFFF);
+			}
+			st.colorApplied = true;
+		} else {
+			if (st.origColor) {
+				tf.SetMember("textColor", RE::GFxValue(*st.origColor));
+			}
+			st.origColor.reset();
+			st.colorApplied = false;
+		}
+	}
+
 	bool TryApply(const EntryPtr& a_entry, RE::GFxMovieView* a_movie)
 	{
 		auto&      st = a_entry->ui;
@@ -259,6 +310,7 @@ namespace
 			clip.SetMember("_y", RE::GFxValue(*st.baseY + oy));
 
 			ApplyWidth(a_entry, clip, limit, maxW, target, visualW);
+			ApplyColor(a_entry, clip, on);
 
 			if (std::abs(st.lastLoggedScale - target) > 0.001) {
 				spdlog::info("[{}] scale {}% applied to '{}' (width at 100%: {}, width limit: {})",
@@ -349,8 +401,74 @@ namespace
 	};
 }
 
+// ---------------------------------------------------------------------------
+// Per-frame color enforcement. The game may reset the text color when it shows a new line, so after each
+// frame of the HUD and dialogue menus the color is set again if it differs.
+// ---------------------------------------------------------------------------
+namespace
+{
+	void EnforceColor(RE::IMenu* a_menu, std::string_view a_menuName)
+	{
+		auto* movie = a_menu ? a_menu->uiMovie.get() : nullptr;
+		if (!movie) {
+			return;
+		}
+
+		for (const auto& e : Settings::GetEntries()) {
+			const int color = e->color.load();
+			if (color < 0 || !e->enabled.load() || !e->ui.colorApplied || e->GetMenu() != a_menuName) {
+				continue;
+			}
+			for (const auto& path : e->GetPaths()) {
+				RE::GFxValue clip;
+				if (!movie->GetVariable(&clip, path.c_str()) || !IsClip(clip)) {
+					continue;
+				}
+				RE::GFxValue tf;
+				if (!GetTextFieldValue(e, clip, tf)) {
+					break;
+				}
+				RE::GFxValue cur;
+				if (!tf.GetMember("textColor", &cur) || !cur.IsNumber() || (static_cast<int>(cur.GetNumber()) & 0xFFFFFF) != color) {
+					tf.SetMember("textColor", RE::GFxValue(static_cast<double>(color)));
+				}
+				break;
+			}
+		}
+	}
+
+	using AdvanceMovie_t = void (*)(RE::IMenu*, float, std::uint32_t);
+	AdvanceMovie_t g_origHudAdvance = nullptr;
+	AdvanceMovie_t g_origDialogueAdvance = nullptr;
+
+	void Hook_HudAdvance(RE::IMenu* a_menu, float a_interval, std::uint32_t a_time)
+	{
+		g_origHudAdvance(a_menu, a_interval, a_time);
+		EnforceColor(a_menu, "HUD Menu");
+	}
+
+	void Hook_DialogueAdvance(RE::IMenu* a_menu, float a_interval, std::uint32_t a_time)
+	{
+		g_origDialogueAdvance(a_menu, a_interval, a_time);
+		EnforceColor(a_menu, "Dialogue Menu");
+	}
+}
+
 namespace Subtitles
 {
+	void InstallColorHooks()
+	{
+		constexpr std::size_t kAdvanceMovieIndex = 0x5;  // IMenu::AdvanceMovie
+
+		REL::Relocation<std::uintptr_t> hud{ RE::VTABLE_HUDMenu[0] };
+		g_origHudAdvance = reinterpret_cast<AdvanceMovie_t>(hud.write_vfunc(kAdvanceMovieIndex, reinterpret_cast<std::uintptr_t>(&Hook_HudAdvance)));
+
+		REL::Relocation<std::uintptr_t> dlg{ RE::VTABLE_DialogueMenu[0] };
+		g_origDialogueAdvance = reinterpret_cast<AdvanceMovie_t>(dlg.write_vfunc(kAdvanceMovieIndex, reinterpret_cast<std::uintptr_t>(&Hook_DialogueAdvance)));
+
+		spdlog::info("Color hooks installed on HUD Menu and Dialogue Menu");
+	}
+
 	void Apply(const std::shared_ptr<Settings::Entry>& a_entry, bool a_withRetry)
 	{
 		if (a_entry) {
