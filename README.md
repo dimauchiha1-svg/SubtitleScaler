@@ -9,6 +9,8 @@ It enlarges subtitles and response options in dialogues. Each element is configu
 | `[HUD]` | Subtitles when an NPC talks to another NPC or addresses the player without a dialogue window (greetings, guard shouts) | enabled, 150% |
 | `[Dialogue]` | The NPC's line in the dialogue window with the player | enabled, 150% |
 | `[PlayerChoices]` | The player's response options in the dialogue window | disabled |
+| `[HUDName]` | The speaker name in world subtitles, with its own scale, offset and color | disabled |
+| `[DialogueName]` | The speaker name in the dialogue window, with its own scale, offset and color | disabled |
 
 > VR is not included in this build: it is built on `commonlibsse-ng-flatrim` (SE + AE).
 
@@ -43,7 +45,7 @@ Do not forget to enable subtitles in the game settings (**Settings → Display �
 
 ## Settings menu (SKSE Menu Framework)
 
-If SKSE Menu Framework is installed, a **SubtitleScaler → Subtitles** section appears in its Mod Control Panel. For each of the three targets (`HUD`, `Dialogue`, `PlayerChoices`) it has:
+If SKSE Menu Framework is installed, a **SubtitleScaler → Subtitles** section appears in its Mod Control Panel. For each of the targets (`HUD`, `Dialogue`, `PlayerChoices`, `HUDName`, `DialogueName`) it has:
 
 - an **Enabled** checkbox;
 - a **Scale (%)** slider (50–400);
@@ -98,6 +100,10 @@ Plugin log: `Documents\My Games\Skyrim Special Edition\SKSE\SubtitleScaler.log` 
 - A line like `[Name] scale ...% applied` means the section works. For dialogue window elements the line appears after the window is opened for the first time.
 - A line like `[Name] element not found` means your interface uses a different menu name or path. Run the build manually (**Actions → Run workflow**) with the `dump` box ticked: the menu structure will be written to the log. Find the element you need there and put its path in the `Paths` of that section.
 - Lines like `text field for width limiting: ...` and `field '...': width ...` show how `MaxWidth` was applied.
+
+## Speaker names
+
+`[HUDName]` and `[DialogueName]` are separate targets for the speaker name, so the name can have its own color, size and position. They are disabled by default. The element paths are best guesses for the standard interface. If the log contains `[HUDName] element not found`, it also contains a `Probe:` section with the member names that exist near the subtitle text, and `HUD subtitle sample:` lines showing how the subtitle text is stored (for example, whether the speaker name is part of the same text field). Send those lines to the author.
 
 ## Limitations
 

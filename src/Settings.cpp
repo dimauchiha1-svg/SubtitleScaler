@@ -65,6 +65,20 @@ namespace
 			v.push_back(std::move(dialogue));
 			v.push_back(std::make_shared<E>("PlayerChoices", "Dialogue Menu",
 				std::vector<std::string>{ "_root.DialogueMenu_mc.TopicListHolder" }, false));
+
+			// Speaker names. Disabled by default; the paths are best guesses for the standard interface
+			// (several candidates, the first one found is used).
+			auto hudName = std::make_shared<E>("HUDName", "HUD Menu",
+				std::vector<std::string>{ "_root.HUDMovieBaseInstance.SubtitleTextHolder.SpeakerName",
+					"_root.HUDMovieBaseInstance.SubtitleTextHolder.SpeakerNameText",
+					"_root.HUDMovieBaseInstance.SpeakerName" },
+				false);
+			hudName->scale = 100.0f;
+			v.push_back(std::move(hudName));
+			auto dialogueName = std::make_shared<E>("DialogueName", "Dialogue Menu",
+				std::vector<std::string>{ "_root.DialogueMenu_mc.SpeakerName", "_root.DialogueMenu_mc.SpeakerNameText" }, false);
+			dialogueName->scale = 100.0f;
+			v.push_back(std::move(dialogueName));
 			return v;
 		}();
 		return entries;

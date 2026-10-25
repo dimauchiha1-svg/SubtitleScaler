@@ -67,6 +67,12 @@ namespace
 		if (a_name == "PlayerChoices") {
 			return "Player response options";
 		}
+		if (a_name == "HUDName") {
+			return "Speaker name in world subtitles";
+		}
+		if (a_name == "DialogueName") {
+			return "Speaker name in the dialogue window";
+		}
 		return a_name.c_str();
 	}
 
