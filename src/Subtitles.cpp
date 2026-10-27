@@ -7,10 +7,12 @@
 
 #include <algorithm>
 #include <chrono>
+#include <format>
 #include <cmath>
 #include <string>
 #include <string_view>
 #include <thread>
+#include <vector>
 
 namespace
 {
@@ -385,6 +387,15 @@ namespace
 			}).detach();
 		} else if (a_withRetry && !a_entry->ui.loggedMissing) {
 			a_entry->ui.loggedMissing = true;
+
+			// The menu itself did not exist yet (for example, the game is still loading): nothing is wrong,
+			// the target is applied when the menu opens (MenuSink).
+			const auto uiNow = RE::UI::GetSingleton();
+			const auto menuNow = uiNow ? uiNow->GetMenu(menuName) : nullptr;
+			if (!menuNow || !menuNow->uiMovie) {
+				spdlog::info("[{}] menu '{}' is not available yet, it will be applied when the menu opens", a_entry->name, menuName);
+				return;
+			}
 			spdlog::warn("[{}] element not found at any path from the INI (Paths) in menu '{}'. "
 						 "Check the menu name and path, or build the plugin with SUBTITLESCALER_DUMP=ON "
 						 "to print the menu structure to the log.",
@@ -493,6 +504,17 @@ namespace
 
 	void EnforceHudName(RE::IMenu* a_menu)
 	{
+		// Diagnostics: the first few distinct subtitle texts and what was done with them.
+		static int         s_logged = 0;
+		static std::string s_lastText;
+		const auto         log = [&](const std::string& a_text, const std::string& a_message) {
+			if (s_logged < 12 && s_lastText != a_text) {
+				s_lastText = a_text;
+				++s_logged;
+				spdlog::info("{}", a_message);
+			}
+		};
+
 		const auto name = Settings::Find("HUDName");
 		const auto hud = Settings::Find("HUD");
 		if (!name || !hud || !name->enabled.load() || hud->ui.tfName.empty()) {
@@ -524,24 +546,49 @@ namespace
 				return;
 			}
 			const std::string s = text.GetString();
-			const auto        sep = s.find(": ");
-			if (sep == std::string::npos || sep == 0 || sep > 120) {
+
+			// The text can hold several lines ("Name: line", one per speaker; the "Subtitles" mod shows up to four).
+			// Flash separates paragraphs with '\r'; '\n' is handled too. The name of every line is formatted.
+			struct Range
+			{
+				std::size_t begin;
+				std::size_t end;
+			};
+			std::vector<Range> names;
+			std::size_t        lineStart = 0;
+			while (lineStart <= s.size()) {
+				auto lineEnd = s.find_first_of("\r\n", lineStart);
+				if (lineEnd == std::string::npos) {
+					lineEnd = s.size();
+				}
+				const auto line = std::string_view(s).substr(lineStart, lineEnd - lineStart);
+				const auto sep = line.find(": ");
+				if (sep != std::string_view::npos && sep > 0 && sep <= 120) {
+					names.push_back({ Utf16Length(s, lineStart), Utf16Length(s, lineStart + sep) });
+				}
+				if (lineEnd >= s.size()) {
+					break;
+				}
+				lineStart = lineEnd + 1;
+			}
+
+			if (names.empty()) {
+				if (s.size() > 1) {
+					log(s, std::format("HUDName: no speaker name found in '{}'", s));
+				}
 				return;  // no speaker name in this subtitle
 			}
 			const auto total = Utf16Length(s, s.size());
-			const auto end = Utf16Length(s, sep);
-			if (end + 2 >= total) {
-				return;
-			}
 
 			RE::GFxValue fmt;
 			movie->CreateObject(&fmt, "TextFormat");
+			double base = 0.0;
 			if (color >= 0) {
 				fmt.SetMember("color", RE::GFxValue(static_cast<double>(color)));
 			}
 			if (resize) {
-				// The base size is read from the last character (the line itself), which this code never resizes.
-				double       base = 20.0;
+				// The base size is read from the last character (the end of a line of speech), which this code never resizes.
+				base = 20.0;
 				RE::GFxValue cur;
 				const RE::GFxValue probe[2] = { RE::GFxValue(static_cast<double>(total - 1)), RE::GFxValue(static_cast<double>(total)) };
 				RE::GFxValue size;
@@ -551,8 +598,13 @@ namespace
 				fmt.SetMember("size", RE::GFxValue(base * scale / 100.0));
 			}
 
-			const RE::GFxValue args[3] = { RE::GFxValue(0.0), RE::GFxValue(static_cast<double>(end)), fmt };
-			tf.Invoke("setTextFormat", nullptr, args, 3);
+			bool allOk = true;
+			for (const auto& r : names) {
+				const RE::GFxValue args[3] = { RE::GFxValue(static_cast<double>(r.begin)), RE::GFxValue(static_cast<double>(r.end)), fmt };
+				allOk = tf.Invoke("setTextFormat", nullptr, args, 3) && allOk;
+			}
+			log(s, std::format("HUDName: '{}' {} name(s) of {} chars, color {}, base size {}, scale {}%, setTextFormat {}", s, names.size(), total, color, base, scale,
+				allOk ? "ok" : "failed"));
 			return;
 		}
 	}
