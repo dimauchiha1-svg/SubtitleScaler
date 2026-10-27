@@ -20,7 +20,8 @@ namespace
 
 		auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path->string(), true);
 		auto log  = std::make_shared<spdlog::logger>("global log", std::move(sink));
-		log->set_level(spdlog::level::info);
+		// [General] Logging=0 in the INI: the log file is created empty and nothing is written to it.
+		log->set_level(Settings::ReadLogFlagFromIni() ? spdlog::level::info : spdlog::level::off);
 		log->flush_on(spdlog::level::info);
 
 		spdlog::set_default_logger(std::move(log));

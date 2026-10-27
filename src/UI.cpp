@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cstdarg>
 #include <cstdint>
+#include <cstdio>
 #include <filesystem>
 
 // SKSE Menu Framework 3 API header. ImGui is called through the framework's own functions
@@ -35,7 +36,7 @@ namespace
 		static constexpr const char* kNames[] = {
 			"AddSectionItem", "igGetVersion", "igGetCurrentContext", "igCheckbox", "igSliderFloat",
 			"igDragFloat2", "igColorEdit3", "igButton", "igSameLine", "igSeparator", "igPushID_Str", "igPopID",
-			"igTextV", "igTextWrappedV", "igTextUnformatted"
+			"igTextV", "igTextWrappedV", "igTextUnformatted", "igSliderInt", "igInputText"
 		};
 
 		const auto module = ::GetModuleHandleW(kFrameworkModule);
@@ -89,6 +90,11 @@ namespace
 		ImGuiMCP::TextWrapped("Changes are applied immediately. World subtitles update on the next spoken line, "
 							  "dialogue window elements the next time the window is opened.");
 
+		bool logOn = Settings::IsLogEnabled();
+		if (ImGuiMCP::Checkbox("Write log file (SubtitleScaler.log)", &logOn)) {
+			Settings::SetLogEnabled(logOn);
+		}
+
 		for (const auto& e : Settings::GetEntries()) {
 			ImGuiMCP::PushID(e->name.c_str());
 			ImGuiMCP::Separator();
@@ -124,8 +130,8 @@ namespace
 				changed = true;
 			}
 
-			// Custom text color (only for targets that have a text field)
-			if (e->name != "PlayerChoices") {
+			// Custom text color
+			{
 				bool useColor = e->color.load() >= 0;
 				if (ImGuiMCP::Checkbox("Custom text color", &useColor)) {
 					e->color = useColor ? 0xFFFFFF : -1;
@@ -140,6 +146,62 @@ namespace
 						e->color = (to8(rgb[0]) << 16) | (to8(rgb[1]) << 8) | to8(rgb[2]);
 						changed = true;
 					}
+					if (e->name == "PlayerChoices") {
+						ImGuiMCP::TextWrapped("The option under the cursor keeps the game's highlight color.");
+					}
+				}
+			}
+
+			// Shadow, outline and font
+			if (Settings::SupportsEffects(e->name)) {
+				bool shadow = e->shadowEnabled.load();
+				if (ImGuiMCP::Checkbox("Text shadow (replaces the game's own shadow)", &shadow)) {
+					e->shadowEnabled = shadow;
+					changed = true;
+				}
+				if (shadow) {
+					int strength = e->shadowStrength.load();
+					if (ImGuiMCP::SliderInt("Shadow strength (0-100)", &strength, 0, 100)) {
+						e->shadowStrength = strength;
+						changed = true;
+					}
+				}
+
+				bool outline = e->outlineEnabled.load();
+				if (ImGuiMCP::Checkbox("Black outline (can be combined with the shadow)", &outline)) {
+					e->outlineEnabled = outline;
+					changed = true;
+				}
+				if (outline) {
+					int size = e->outlineSize.load();
+					if (ImGuiMCP::SliderInt("Outline size", &size, 1, 4)) {
+						e->outlineSize = size;
+						changed = true;
+					}
+				}
+			}
+
+			if (Settings::SupportsFont(e->name)) {
+				char buf[64] = {};
+				std::snprintf(buf, sizeof(buf), "%s", e->GetFont().c_str());
+				if (ImGuiMCP::InputText("Font (empty = original)", buf, sizeof(buf))) {
+					e->SetFont(buf);
+					changed = true;
+				}
+				static constexpr const char* kFonts[] = { "$EverywhereFont", "$EverywhereMediumFont", "$EverywhereBoldFont", "$ConsoleFont",
+					"$HandwrittenFont", "$SkyrimBooks" };
+				for (int i = 0; i < 6; ++i) {
+					if (i % 3 != 0) {
+						ImGuiMCP::SameLine();
+					}
+					if (ImGuiMCP::Button(kFonts[i])) {
+						e->SetFont(kFonts[i]);
+						changed = true;
+					}
+				}
+				if (ImGuiMCP::Button("Original font")) {
+					e->SetFont({});
+					changed = true;
 				}
 			}
 

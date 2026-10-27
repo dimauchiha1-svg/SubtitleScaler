@@ -7,7 +7,10 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstring>
 #include <format>
+#include <initializer_list>
+#include <utility>
 #include <cmath>
 #include <string>
 #include <string_view>
@@ -253,6 +256,10 @@ namespace
 		}
 	}
 
+	// Shadow, outline, font and (for response options) color. Defined below.
+	void StyleTextField(RE::GFxMovieView* a_movie, const EntryPtr& a_entry, RE::GFxValue& a_tf, bool a_on);
+	void StyleChoices(RE::GFxMovieView* a_movie, const EntryPtr& a_entry, bool a_on);
+
 	bool TryApply(const EntryPtr& a_entry, RE::GFxMovieView* a_movie)
 	{
 		// The HUD speaker name is handled in the per-frame hook (EnforceHudName): it is part of the subtitle text.
@@ -342,7 +349,15 @@ namespace
 			clip.SetMember("_y", RE::GFxValue(*st.baseY + oy));
 
 			ApplyWidth(a_entry, clip, limit, maxW, target, visualW);
-			ApplyColor(a_entry, clip, on);
+			if (a_entry->name == "PlayerChoices") {
+				StyleChoices(a_movie, a_entry, on);  // the options are separate fields inside the list
+			} else {
+				ApplyColor(a_entry, clip, on);
+				RE::GFxValue styleTf;
+				if (Settings::SupportsEffects(a_entry->name) && GetTextFieldValue(a_entry, clip, styleTf)) {
+					StyleTextField(a_movie, a_entry, styleTf, on);
+				}
+			}
 
 			if (std::abs(st.lastLoggedScale - target) > 0.001) {
 				spdlog::info("[{}] scale {}% applied to '{}' (width at 100%: {}, width limit: {})",
@@ -502,6 +517,339 @@ namespace
 		return n;
 	}
 
+	// ---- Text style: shadow / outline (Flash filters), font, and the color of response options ----
+	// Everything we change is remembered in members of the text field itself (_ss...), because the field
+	// can outlive our state, and the game rewrites formatting whenever it sets new text.
+
+	constexpr const char* kFxMarker = "_ssFx";
+
+	// Reads the font of the first (or last) character. Empty if unknown or mixed.
+	std::string ReadFieldFont(RE::GFxValue& a_tf, bool a_last)
+	{
+		RE::GFxValue text, fmt, font;
+		std::size_t  len = 0;
+		if (GetMemberSafe(a_tf, "text", text) && text.IsString()) {
+			const std::string s = text.GetString();
+			len = Utf16Length(s, s.size());
+		}
+		bool ok = false;
+		if (len == 0) {
+			ok = a_tf.Invoke("getTextFormat", &fmt, nullptr, 0);
+		} else {
+			const RE::GFxValue args[2] = { RE::GFxValue(static_cast<double>(a_last ? len - 1 : 0)), RE::GFxValue(static_cast<double>(a_last ? len : 1)) };
+			ok = a_tf.Invoke("getTextFormat", &fmt, args, 2);
+		}
+		if (ok && IsClip(fmt) && GetMemberSafe(fmt, "font", font) && font.IsString()) {
+			return font.GetString();
+		}
+		return {};
+	}
+
+	// Sets the whole-field text format with a single font.
+	void SetFieldFont(RE::GFxMovieView* a_movie, RE::GFxValue& a_tf, const std::string& a_font)
+	{
+		RE::GFxValue fmt;
+		a_movie->CreateObject(&fmt, "TextFormat");
+		fmt.SetMember("font", RE::GFxValue(a_font.c_str()));
+		a_tf.Invoke("setTextFormat", nullptr, &fmt, 1);
+	}
+
+	void ApplyFont(RE::GFxMovieView* a_movie, const EntryPtr& a_e, RE::GFxValue& a_tf, const std::string& a_font)
+	{
+		RE::GFxValue text, wantStored, readStored, origStored;
+		if (!GetMemberSafe(a_tf, "text", text) || !text.IsString() || text.GetString()[0] == '\0') {
+			return;  // nothing to format yet
+		}
+		const bool hasWant = GetMemberSafe(a_tf, "_ssFontWant", wantStored) && wantStored.IsString();
+		const bool hasOrig = GetMemberSafe(a_tf, "_ssOrigFont", origStored) && origStored.IsString();
+
+		if (a_font.empty()) {
+			// Back to the original font (only if we changed it).
+			if (hasWant && hasOrig && origStored.GetString()[0] != '\0') {
+				SetFieldFont(a_movie, a_tf, origStored.GetString());
+			}
+			if (hasWant) {
+				a_tf.SetMember("_ssFontWant", RE::GFxValue(""));
+				a_tf.SetMember("_ssFontRead", RE::GFxValue(""));
+			}
+			return;
+		}
+
+		const std::string now = ReadFieldFont(a_tf, false) + "|" + ReadFieldFont(a_tf, true);
+		if (hasWant && a_font == wantStored.GetString() && GetMemberSafe(a_tf, "_ssFontRead", readStored) && readStored.IsString() &&
+			now == readStored.GetString()) {
+			return;  // nothing changed since we set the font
+		}
+
+		if (!hasOrig) {
+			a_tf.SetMember("_ssOrigFont", RE::GFxValue(ReadFieldFont(a_tf, false).c_str()));
+		}
+		SetFieldFont(a_movie, a_tf, a_font);
+		const std::string after = ReadFieldFont(a_tf, false) + "|" + ReadFieldFont(a_tf, true);
+		a_tf.SetMember("_ssFontWant", RE::GFxValue(a_font.c_str()));
+		a_tf.SetMember("_ssFontRead", RE::GFxValue(after.c_str()));
+		if (!a_e->ui.loggedStyle) {
+			spdlog::info("[{}] font '{}' applied (the text field reports '{}')", a_e->name, a_font, after);
+		}
+	}
+
+	bool CreateFilter(RE::GFxMovieView* a_movie, RE::GFxValue& a_out, std::initializer_list<const char*> a_classNames, const RE::GFxValue* a_args,
+		std::uint32_t a_numArgs)
+	{
+		for (const auto* cls : a_classNames) {
+			RE::GFxValue obj;
+			a_movie->CreateObject(&obj, cls, a_args, a_numArgs);  // returns void: an unknown class leaves obj undefined
+			if (IsClip(obj)) {
+				a_out = obj;
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// Shadow = DropShadowFilter, outline = black GlowFilter. Both replace the filters the game put on the field;
+	// the original ones come back when the effects are turned off.
+	void ApplyFilters(RE::GFxMovieView* a_movie, const EntryPtr& a_e, RE::GFxValue& a_tf, bool a_on)
+	{
+		const bool shadow = a_on && a_e->shadowEnabled.load();
+		const bool outline = a_on && a_e->outlineEnabled.load();
+		const int  strength = a_e->shadowStrength.load();
+		const int  size = a_e->outlineSize.load();
+
+		std::string want;
+		if (shadow) {
+			want += std::format("s{}", strength);
+		}
+		if (outline) {
+			want += std::format("o{}", size);
+		}
+
+		RE::GFxValue cur;
+		const std::string have = (GetMemberSafe(a_tf, kFxMarker, cur) && cur.IsString()) ? cur.GetString() : "";
+		if (want == have) {
+			return;
+		}
+
+		RE::GFxValue saved;
+		if (!GetMemberSafe(a_tf, "_ssFiltSaved", saved)) {
+			RE::GFxValue orig;
+			if (GetMemberSafe(a_tf, "filters", orig)) {
+				a_tf.SetMember("_ssOrigFilters", orig);
+			}
+			a_tf.SetMember("_ssFiltSaved", RE::GFxValue(true));
+		}
+
+		if (want.empty()) {
+			RE::GFxValue orig;
+			if (GetMemberSafe(a_tf, "_ssOrigFilters", orig) && IsClip(orig)) {
+				a_tf.SetMember("filters", orig);
+			} else {
+				RE::GFxValue none;
+				a_movie->CreateArray(&none);
+				a_tf.SetMember("filters", none);
+			}
+			a_tf.SetMember(kFxMarker, RE::GFxValue(""));
+			return;
+		}
+
+		RE::GFxValue list;
+		a_movie->CreateArray(&list);
+		bool ok = true;
+
+		if (outline) {
+			const double blur = 1.0 + size;
+			// GlowFilter(color, alpha, blurX, blurY, strength, quality)
+			const RE::GFxValue args[6] = { RE::GFxValue(0.0), RE::GFxValue(1.0), RE::GFxValue(blur), RE::GFxValue(blur),
+				RE::GFxValue(4.0 + 2.0 * size), RE::GFxValue(2.0) };
+			RE::GFxValue glow;
+			if (CreateFilter(a_movie, glow, { "flash.filters.GlowFilter", "GlowFilter" }, args, 6)) {
+				list.PushBack(glow);
+			} else {
+				ok = false;
+			}
+		}
+		if (shadow) {
+			// DropShadowFilter(distance, angle, color, alpha, blurX, blurY, strength, quality)
+			const double alpha = std::clamp(strength / 100.0, 0.0, 1.0);
+			const RE::GFxValue args[8] = { RE::GFxValue(2.0), RE::GFxValue(45.0), RE::GFxValue(0.0), RE::GFxValue(alpha), RE::GFxValue(3.0),
+				RE::GFxValue(3.0), RE::GFxValue(1.0 + strength / 50.0), RE::GFxValue(2.0) };
+			RE::GFxValue drop;
+			if (CreateFilter(a_movie, drop, { "flash.filters.DropShadowFilter", "DropShadowFilter" }, args, 8)) {
+				list.PushBack(drop);
+			} else {
+				ok = false;
+			}
+		}
+
+		a_tf.SetMember(kFxMarker, RE::GFxValue(want.c_str()));  // also on failure, so that we do not retry every frame
+		if (!ok) {
+			if (!a_e->ui.warnedFilters) {
+				a_e->ui.warnedFilters = true;
+				spdlog::warn("[{}] could not create the filter object (flash.filters.*): shadow/outline are not available in this interface", a_e->name);
+			}
+			return;
+		}
+		a_tf.SetMember("filters", list);
+		if (!a_e->ui.loggedStyle) {
+			spdlog::info("[{}] effects applied: shadow {}, outline {}", a_e->name, shadow ? std::format("{}", strength) : "off",
+				outline ? std::format("{}", size) : "off");
+		}
+	}
+
+	// Filters and font of one text field.
+	void StyleTextField(RE::GFxMovieView* a_movie, const EntryPtr& a_e, RE::GFxValue& a_tf, bool a_on)
+	{
+		ApplyFilters(a_movie, a_e, a_tf, a_on);
+		if (Settings::SupportsFont(a_e->name)) {
+			ApplyFont(a_movie, a_e, a_tf, a_on ? a_e->GetFont() : std::string());
+		}
+		const bool any = a_on && (a_e->shadowEnabled.load() || a_e->outlineEnabled.load() || !a_e->GetFont().empty());
+		a_e->ui.loggedStyle = a_e->ui.loggedStyle || any;
+		a_e->ui.styleApplied = any || a_e->ui.styleApplied;
+	}
+
+	// Candidate paths of the response list (the same ones DialogueSourceTags uses). Entries are Entry0, Entry1, ...
+	constexpr const char* kChoiceListPaths[] = {
+		"_root.DialogueMenu_mc.TopicList",
+		"_root.DialogueMenu_mc.TopicListHolder.List",
+		"_root.DialogueMenu_mc.TopicListHolder.TopicList",
+		"_root.DialogueMenu_mc.TopicListHolder",
+	};
+	constexpr int kMaxChoices = 32;
+
+	// Colors one response option. The tag "[Plugin] " in front of the text (DialogueSourceTags) keeps its own color.
+	void ColorChoice(RE::GFxMovieView* a_movie, const EntryPtr& a_e, RE::GFxValue& a_tf, int a_color, bool a_selected)
+	{
+		RE::GFxValue text;
+		if (!GetMemberSafe(a_tf, "text", text) || !text.IsString() || text.GetString()[0] == '\0') {
+			return;
+		}
+		const std::string s = text.GetString();
+		const auto        total = Utf16Length(s, s.size());
+
+		std::size_t start = 0;
+		if (s[0] == '[') {
+			if (const auto close = s.find("] "); close != std::string::npos && close < 80) {
+				start = Utf16Length(s, close + 2);
+			}
+		}
+		if (start >= total) {
+			return;
+		}
+
+		RE::GFxValue cur, fmtNow, curColor, orig;
+		const RE::GFxValue probe[2] = { RE::GFxValue(static_cast<double>(total - 1)), RE::GFxValue(static_cast<double>(total)) };
+		const bool readOk = a_tf.Invoke("getTextFormat", &fmtNow, probe, 2) && IsClip(fmtNow) && GetMemberSafe(fmtNow, "color", curColor) &&
+		                    curColor.IsNumber();
+		const int  curRgb = readOk ? (static_cast<int>(curColor.GetNumber()) & 0xFFFFFF) : -1;
+
+		if (a_color >= 0 && !a_selected) {
+			if (curRgb == a_color) {
+				return;
+			}
+			if (readOk && !GetMemberSafe(a_tf, "_ssOrigColor", orig)) {
+				a_tf.SetMember("_ssOrigColor", RE::GFxValue(static_cast<double>(curRgb)));
+			}
+			RE::GFxValue fmt;
+			a_movie->CreateObject(&fmt, "TextFormat");
+			fmt.SetMember("color", RE::GFxValue(static_cast<double>(a_color)));
+			const RE::GFxValue args[3] = { RE::GFxValue(static_cast<double>(start)), RE::GFxValue(static_cast<double>(total)), fmt };
+			a_tf.Invoke("setTextFormat", nullptr, args, 3);
+			if (!a_e->ui.colorApplied) {
+				a_e->ui.colorApplied = true;
+				spdlog::info("[{}] option color {:06X} applied", a_e->name, a_color & 0xFFFFFF);
+			}
+		} else if (a_color < 0 && !a_selected && GetMemberSafe(a_tf, "_ssOrigColor", orig) && orig.IsNumber()) {
+			// The color was switched off: put the remembered one back.
+			if (curRgb != (static_cast<int>(orig.GetNumber()) & 0xFFFFFF)) {
+				RE::GFxValue fmt;
+				a_movie->CreateObject(&fmt, "TextFormat");
+				fmt.SetMember("color", orig);
+				const RE::GFxValue args[3] = { RE::GFxValue(static_cast<double>(start)), RE::GFxValue(static_cast<double>(total)), fmt };
+				a_tf.Invoke("setTextFormat", nullptr, args, 3);
+			}
+			a_tf.SetMember("_ssOrigColor", RE::GFxValue());
+		}
+	}
+
+	// Shadow, outline, font and color for every option of the player's response list.
+	void StyleChoices(RE::GFxMovieView* a_movie, const EntryPtr& a_e, bool a_on)
+	{
+		const int color = a_on ? a_e->color.load() : -1;
+		for (const auto* path : kChoiceListPaths) {
+			RE::GFxValue list;
+			if (!a_movie->GetVariable(&list, path) || !IsClip(list)) {
+				continue;
+			}
+			RE::GFxValue first;
+			if (!GetMemberSafe(list, "Entry0", first)) {
+				continue;
+			}
+
+			// The option under the cursor keeps the game's highlight color.
+			int          selected = -1;
+			RE::GFxValue sel;
+			if ((GetMemberSafe(list, "iSelectedIndex", sel) || GetMemberSafe(list, "selectedIndex", sel)) && sel.IsNumber()) {
+				selected = static_cast<int>(sel.GetNumber());
+			} else if (color >= 0 && !a_e->ui.warnedSelection) {
+				a_e->ui.warnedSelection = true;
+				spdlog::info("[{}] could not tell which option is selected: all options get the custom color", a_e->name);
+			}
+
+			for (int i = 0; i < kMaxChoices; ++i) {
+				const std::string name = "Entry" + std::to_string(i);
+				RE::GFxValue      clip, tf;
+				if (!GetMemberSafe(list, name.c_str(), clip) || !GetMemberSafe(clip, "textField", tf)) {
+					break;
+				}
+				StyleTextField(a_movie, a_e, tf, a_on);
+
+				RE::GFxValue idx;
+				const bool   isSelected = selected >= 0 && GetMemberSafe(clip, "itemIndex", idx) && idx.IsNumber() &&
+				                        static_cast<int>(idx.GetNumber()) == selected;
+				ColorChoice(a_movie, a_e, tf, color, isSelected);
+			}
+			return;
+		}
+	}
+
+	// Per frame: the game rewrites the text (and its formatting) when it changes a line or the selection.
+	void EnforceStyle(RE::IMenu* a_menu, std::string_view a_menuName)
+	{
+		auto* movie = a_menu ? a_menu->uiMovie.get() : nullptr;
+		if (!movie) {
+			return;
+		}
+
+		for (const auto& e : Settings::GetEntries()) {
+			if (!e->enabled.load() || e->GetMenu() != a_menuName || !Settings::SupportsEffects(e->name)) {
+				continue;
+			}
+			const bool isChoices = e->name == "PlayerChoices";
+			const bool wants = e->shadowEnabled.load() || e->outlineEnabled.load() || !e->GetFont().empty() || (isChoices && e->color.load() >= 0);
+			if (!wants) {
+				continue;
+			}
+			if (isChoices) {
+				StyleChoices(movie, e, true);
+				continue;
+			}
+			if (e->ui.tfName.empty()) {
+				continue;
+			}
+			for (const auto& path : e->GetPaths()) {
+				RE::GFxValue clip, tf;
+				if (!movie->GetVariable(&clip, path.c_str()) || !IsClip(clip)) {
+					continue;
+				}
+				if (GetTextFieldValue(e, clip, tf)) {
+					StyleTextField(movie, e, tf, true);
+				}
+				break;
+			}
+		}
+	}
+
 	void EnforceHudName(RE::IMenu* a_menu)
 	{
 		// Diagnostics: the first few distinct subtitle texts and what was done with them.
@@ -613,6 +961,7 @@ namespace
 	{
 		g_origHudAdvance(a_menu, a_interval, a_time);
 		EnforceColor(a_menu, "HUD Menu");
+		EnforceStyle(a_menu, "HUD Menu");
 		EnforceHudName(a_menu);
 	}
 
@@ -620,6 +969,7 @@ namespace
 	{
 		g_origDialogueAdvance(a_menu, a_interval, a_time);
 		EnforceColor(a_menu, "Dialogue Menu");
+		EnforceStyle(a_menu, "Dialogue Menu");
 	}
 }
 

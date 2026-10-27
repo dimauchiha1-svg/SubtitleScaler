@@ -37,9 +37,31 @@ namespace Settings
 		// Maximum visible width of the element in Flash stage units (0 = no limit). If the enlarged
 		// element is wider, the text wraps onto new lines instead of running off the screen. Skyrim stage width: 1280.
 		std::atomic<float> maxWidth{ 0.0f };
-		// Text color as 0xRRGGBB, or -1 = keep the original color. Works for targets that have a text field
-		// (HUD and Dialogue subtitles); the list of response options is not supported.
+		// Text color as 0xRRGGBB, or -1 = keep the original color. For PlayerChoices the option under the
+		// cursor keeps the game's highlight color.
 		std::atomic<int> color{ -1 };
+
+		// Text effects (HUD, Dialogue and PlayerChoices only; the speaker-name targets do not use them).
+		// Shadow: when enabled, the game's own filters on the element are replaced by a drop shadow of the given
+		// strength (0-100). When disabled, the game's own look is kept.
+		std::atomic<bool> shadowEnabled{ false };
+		std::atomic<int>  shadowStrength{ 60 };
+		// Black outline drawn around the letters (size 1-4), combined with the shadow when both are enabled.
+		std::atomic<bool> outlineEnabled{ false };
+		std::atomic<int>  outlineSize{ 1 };
+
+		// Font name from the game's font configuration (for example "$EverywhereBoldFont"). Empty = keep the original font.
+		// HUD, Dialogue and PlayerChoices.
+		std::string GetFont() const
+		{
+			std::scoped_lock lock(_lock);
+			return _font;
+		}
+		void SetFont(std::string a_font)
+		{
+			std::scoped_lock lock(_lock);
+			_font = std::move(a_font);
+		}
 
 		std::string GetMenu() const
 		{
@@ -83,10 +105,17 @@ namespace Settings
 			std::optional<double> origColor;  // original textColor, remembered before the first change
 			bool                  colorApplied = false;
 			bool                  warnedColor = false;
+
+			// Shadow / outline / font / color of response options (see Subtitles.cpp)
+			bool styleApplied = false;  // something was changed by us and must be restored when the target is turned off
+			bool warnedFilters = false;
+			bool loggedStyle = false;
+			bool warnedSelection = false;
 		} ui;
 
 	private:
 		mutable std::mutex       _lock;
+		std::string              _font;
 		std::string              _menu;   // internal menu name, e.g. "HUD Menu"
 		std::vector<std::string> _paths;  // paths to the clip/text field, tried in order
 	};
@@ -96,6 +125,19 @@ namespace Settings
 
 	// Finds a target by section name (case-insensitive). nullptr if there is none.
 	std::shared_ptr<Entry> Find(std::string_view a_name);
+
+	// Whether the target supports shadow / outline (everything except the speaker-name targets).
+	bool SupportsEffects(std::string_view a_name);
+
+	// Whether the target supports a custom font (HUD, Dialogue and PlayerChoices).
+	bool SupportsFont(std::string_view a_name);
+
+	// Writing to SubtitleScaler.log. When switched off, nothing more is written to the log file.
+	bool IsLogEnabled();
+	void SetLogEnabled(bool a_enabled);
+
+	// Reads only the [General] Logging key of the INI (used before the log is created). true if missing.
+	bool ReadLogFlagFromIni();
 
 	// Reads the INI. If the file does not exist, default values stay in effect.
 	void Load();

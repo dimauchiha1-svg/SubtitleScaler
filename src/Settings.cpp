@@ -3,6 +3,7 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cstdio>
 #include <fstream>
@@ -105,6 +106,71 @@ namespace Settings
 		return nullptr;
 	}
 
+	bool SupportsEffects(std::string_view a_name)
+	{
+		const auto n = Lower(std::string(a_name));
+		return n == "hud" || n == "dialogue" || n == "playerchoices";
+	}
+
+	bool SupportsFont(std::string_view a_name)
+	{
+		const auto n = Lower(std::string(a_name));
+		return n == "hud" || n == "dialogue" || n == "playerchoices";
+	}
+
+	namespace
+	{
+		std::atomic<bool> g_logEnabled{ true };
+	}
+
+	bool IsLogEnabled()
+	{
+		return g_logEnabled.load();
+	}
+
+	void SetLogEnabled(bool a_enabled)
+	{
+		if (g_logEnabled.load() == a_enabled) {
+			return;
+		}
+		if (!a_enabled) {
+			spdlog::info("Logging switched off");
+			spdlog::default_logger()->flush();
+		}
+		g_logEnabled = a_enabled;
+		spdlog::set_level(a_enabled ? spdlog::level::info : spdlog::level::off);
+		if (a_enabled) {
+			spdlog::info("Logging switched on");
+		}
+	}
+
+	bool ReadLogFlagFromIni()
+	{
+		std::ifstream file(kIniPath);
+		std::string   line;
+		bool          inGeneral = false;
+		while (std::getline(file, line)) {
+			line = Trim(line);
+			if (line.empty() || line[0] == ';' || line[0] == '#') {
+				continue;
+			}
+			if (line[0] == '[') {
+				const auto close = line.find(']');
+				inGeneral = Lower(Trim(line.substr(1, close == std::string::npos ? std::string::npos : close - 1))) == "general";
+				continue;
+			}
+			const auto eq = line.find('=');
+			if (inGeneral && eq != std::string::npos && Lower(Trim(line.substr(0, eq))) == "logging") {
+				auto val = Trim(line.substr(eq + 1));
+				if (const auto c = val.find(" ;"); c != std::string::npos) {
+					val = Trim(val.substr(0, c));
+				}
+				return ParseBool(val);
+			}
+		}
+		return true;
+	}
+
 	bool Save()
 	{
 		std::vector<std::string> lines;
@@ -125,8 +191,12 @@ namespace Settings
 			return std::string(buf);
 		};
 
+		using KV = std::vector<std::pair<std::string, std::string>>;
+		std::vector<std::pair<std::string, KV>> sections;
+		sections.emplace_back("General", KV{ { "Logging", IsLogEnabled() ? "1" : "0" } });
+
 		for (const auto& e : GetEntries()) {
-			const std::pair<std::string, std::string> kv[] = {
+			KV kv = {
 				{ "Enabled", e->enabled.load() ? "1" : "0" },
 				{ "Scale", fmt(e->scale.load()) },
 				{ "OffsetX", fmt(e->offsetX.load()) },
@@ -138,9 +208,21 @@ namespace Settings
 					return std::string(buf);
 				}() : std::string() }
 			};
+			if (SupportsEffects(e->name)) {
+				kv.emplace_back("Shadow", e->shadowEnabled.load() ? "1" : "0");
+				kv.emplace_back("ShadowStrength", std::to_string(e->shadowStrength.load()));
+				kv.emplace_back("Outline", e->outlineEnabled.load() ? "1" : "0");
+				kv.emplace_back("OutlineSize", std::to_string(e->outlineSize.load()));
+			}
+			if (SupportsFont(e->name)) {
+				kv.emplace_back("Font", e->GetFont());
+			}
+			sections.emplace_back(e->name, std::move(kv));
+		}
 
+		for (const auto& [secName, kv] : sections) {
 			// Section bounds: header = the "[Name]" line, end = start of the next section.
-			const auto nameKey = Lower(e->name);
+			const auto nameKey = Lower(secName);
 			std::size_t header = lines.size();
 			std::size_t end = lines.size();
 			for (std::size_t i = 0; i < lines.size(); ++i) {
@@ -163,7 +245,7 @@ namespace Settings
 				if (!lines.empty() && !lines.back().empty()) {
 					lines.emplace_back();
 				}
-				lines.push_back("[" + e->name + "]");
+				lines.push_back("[" + secName + "]");
 				for (const auto& [k, v] : kv) {
 					lines.push_back(k + "=" + v);
 				}
@@ -217,6 +299,7 @@ namespace Settings
 		}
 
 		std::shared_ptr<Entry>                    current = Find("HUD");  // keys before the first section belong to HUD
+		bool                                      inGeneral = false;
 		std::map<Entry*, std::vector<std::string>> newPaths;
 		std::string                               line;
 
@@ -258,6 +341,13 @@ namespace Settings
 				val = Trim(val.substr(0, c));
 			}
 
+			if (inGeneral) {
+				if (key == "logging") {
+					SetLogEnabled(ParseBool(val));
+				}
+				continue;
+			}
+
 			float f = 0.0f;
 			if (key == "enabled") {
 				current->enabled = ParseBool(val);
@@ -287,6 +377,20 @@ namespace Settings
 				} else {
 					current->color = -1;  // empty or invalid: original color
 				}
+			} else if (key == "shadow") {
+				current->shadowEnabled = ParseBool(val);
+			} else if (key == "shadowstrength") {
+				if (ParseFloat(val, f)) {
+					current->shadowStrength = std::clamp(static_cast<int>(f), 0, 100);
+				}
+			} else if (key == "outline") {
+				current->outlineEnabled = ParseBool(val);
+			} else if (key == "outlinesize") {
+				if (ParseFloat(val, f)) {
+					current->outlineSize = std::clamp(static_cast<int>(f), 1, 4);
+				}
+			} else if (key == "font") {
+				current->SetFont(val);
 			} else if (key == "anchor") {
 				current->centerAnchor = (Lower(val) == "center");
 			} else if (key == "menu") {
