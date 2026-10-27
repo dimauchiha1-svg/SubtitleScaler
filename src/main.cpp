@@ -54,7 +54,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 	SKSE::Init(a_skse);
 	SetupLog();
 
-	spdlog::info("SubtitleScaler is loading");
+	spdlog::info("SubtitleScaler is loading (built {} {})", __DATE__, __TIME__);
 
 	Settings::Load();
 

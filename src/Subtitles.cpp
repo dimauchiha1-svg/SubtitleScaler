@@ -157,10 +157,18 @@ namespace
 			}
 			if (!st.tfW0) {
 				RE::GFxValue w, x;
-				tf.GetMember("_width", &w);
-				tf.GetMember("_x", &x);
-				st.tfW0 = w.IsNumber() ? w.GetNumber() : 0.0;
-				st.tfX0 = x.IsNumber() ? x.GetNumber() : 0.0;
+				if (GetMemberSafe(tf, "_ssW0", w) && w.IsNumber() && GetMemberSafe(tf, "_ssX0", x) && x.IsNumber()) {
+					// Stored by us earlier (the field outlives our state, see TryApply).
+					st.tfW0 = w.GetNumber();
+					st.tfX0 = x.GetNumber();
+				} else {
+					tf.GetMember("_width", &w);
+					tf.GetMember("_x", &x);
+					st.tfW0 = w.IsNumber() ? w.GetNumber() : 0.0;
+					st.tfX0 = x.IsNumber() ? x.GetNumber() : 0.0;
+					tf.SetMember("_ssW0", RE::GFxValue(*st.tfW0));
+					tf.SetMember("_ssX0", RE::GFxValue(*st.tfX0));
+				}
 				RE::GFxValue wrap, multi, autoSize;
 				GetMemberSafe(tf, "wordWrap", wrap);
 				GetMemberSafe(tf, "multiline", multi);
@@ -204,9 +212,6 @@ namespace
 	{
 		auto&     st = a_entry->ui;
 		const int color = a_on ? a_entry->color.load() : -1;
-		if (color < 0 && !st.colorApplied) {
-			return;
-		}
 
 		RE::GFxValue tf;
 		if (!GetTextFieldValue(a_entry, a_clip, tf)) {
@@ -217,20 +222,30 @@ namespace
 			return;
 		}
 
+		// The original color is stored in the field itself the first time, so that it can be restored even
+		// after our state is reset (the HUD field outlives it).
+		RE::GFxValue stored;
+		const bool   hasStored = GetMemberSafe(tf, "_ssOrigColor", stored) && stored.IsNumber();
+
 		if (color >= 0) {
 			if (!st.origColor) {
-				RE::GFxValue cur;
-				st.origColor = (tf.GetMember("textColor", &cur) && cur.IsNumber()) ? cur.GetNumber() : 16777215.0;
+				if (hasStored) {
+					st.origColor = stored.GetNumber();
+				} else {
+					RE::GFxValue cur;
+					st.origColor = (tf.GetMember("textColor", &cur) && cur.IsNumber()) ? cur.GetNumber() : 16777215.0;
+					tf.SetMember("_ssOrigColor", RE::GFxValue(*st.origColor));
+				}
 			}
 			tf.SetMember("textColor", RE::GFxValue(static_cast<double>(color)));
 			if (!st.colorApplied) {
 				spdlog::info("[{}] text color {:06X} applied", a_entry->name, color & 0xFFFFFF);
 			}
 			st.colorApplied = true;
-		} else {
-			if (st.origColor) {
-				tf.SetMember("textColor", RE::GFxValue(*st.origColor));
-			}
+		} else if (st.colorApplied || hasStored) {
+			const double orig = st.origColor ? *st.origColor : (hasStored ? stored.GetNumber() : 16777215.0);
+			tf.SetMember("textColor", RE::GFxValue(orig));
+			tf.SetMember("_ssOrigColor", RE::GFxValue());  // forget it: the field is back to its original color
 			st.origColor.reset();
 			st.colorApplied = false;
 		}
@@ -268,13 +283,23 @@ namespace
 			clip.GetMember("_x", &vx);
 			clip.GetMember("_y", &vy);
 			clip.GetMember("_width", &vw);
-			if (std::abs(currentScale - 100.0) < 0.01 || !st.baseX || !st.baseY) {
-				st.baseX = vx.IsNumber() ? vx.GetNumber() : 0.0;
-				st.baseY = vy.IsNumber() ? vy.GetNumber() : 0.0;
-				// Width at 100%: if the clip is already enlarged, recompute back.
-				// Skipped while we limit the width ourselves: the measured width is then our own limit.
-				if (!st.limited || !st.baseW) {
+			if (!st.baseX || !st.baseY || !st.baseW) {
+				// The original values are stored in the clip itself the first time, because some clips (the HUD)
+				// outlive our state: after the state is reset the clip may still carry our scale, offset and width.
+				RE::GFxValue px, py, pw;
+				if (GetMemberSafe(clip, "_ssBaseX", px) && px.IsNumber() && GetMemberSafe(clip, "_ssBaseY", py) && py.IsNumber() &&
+					GetMemberSafe(clip, "_ssBaseW", pw) && pw.IsNumber()) {
+					st.baseX = px.GetNumber();
+					st.baseY = py.GetNumber();
+					st.baseW = pw.GetNumber();
+					st.limited = true;  // the clip may still be width-limited from before: let ApplyWidth restore it
+				} else {
+					st.baseX = vx.IsNumber() ? vx.GetNumber() : 0.0;
+					st.baseY = vy.IsNumber() ? vy.GetNumber() : 0.0;
 					st.baseW = vw.IsNumber() ? vw.GetNumber() * 100.0 / std::max(currentScale, 1.0) : 0.0;
+					clip.SetMember("_ssBaseX", RE::GFxValue(*st.baseX));
+					clip.SetMember("_ssBaseY", RE::GFxValue(*st.baseY));
+					clip.SetMember("_ssBaseW", RE::GFxValue(*st.baseW));
 				}
 			}
 
