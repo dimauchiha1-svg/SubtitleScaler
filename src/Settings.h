@@ -41,28 +41,11 @@ namespace Settings
 		// cursor keeps the game's highlight color.
 		std::atomic<int> color{ -1 };
 
-		// Text effects (HUD, Dialogue and PlayerChoices only; the speaker-name targets do not use them).
+		// Drop shadow (HUD, Dialogue and PlayerChoices only; the speaker-name targets do not use it).
 		// Shadow: when enabled, the game's own filters on the element are replaced by a drop shadow of the given
 		// strength (0-100). When disabled, the game's own look is kept.
 		std::atomic<bool> shadowEnabled{ false };
 		std::atomic<int>  shadowStrength{ 60 };
-		// Black outline drawn around the letters (size 1-4), combined with the shadow when both are enabled.
-		std::atomic<bool> outlineEnabled{ false };
-		std::atomic<int>  outlineSize{ 1 };
-
-		// Font name from the game's font configuration (for example "$EverywhereBoldFont"). Empty = keep the original font.
-		// HUD, Dialogue and PlayerChoices.
-		std::string GetFont() const
-		{
-			std::scoped_lock lock(_lock);
-			return _font;
-		}
-		void SetFont(std::string a_font)
-		{
-			std::scoped_lock lock(_lock);
-			_font = std::move(a_font);
-		}
-
 		std::string GetMenu() const
 		{
 			std::scoped_lock lock(_lock);
@@ -106,7 +89,7 @@ namespace Settings
 			bool                  colorApplied = false;
 			bool                  warnedColor = false;
 
-			// Shadow / outline / font / color of response options (see Subtitles.cpp)
+			// Shadow / color of response options (see Subtitles.cpp)
 			bool styleApplied = false;  // something was changed by us and must be restored when the target is turned off
 			bool warnedFilters = false;
 			bool loggedStyle = false;
@@ -115,7 +98,6 @@ namespace Settings
 
 	private:
 		mutable std::mutex       _lock;
-		std::string              _font;
 		std::string              _menu;   // internal menu name, e.g. "HUD Menu"
 		std::vector<std::string> _paths;  // paths to the clip/text field, tried in order
 	};
@@ -126,11 +108,8 @@ namespace Settings
 	// Finds a target by section name (case-insensitive). nullptr if there is none.
 	std::shared_ptr<Entry> Find(std::string_view a_name);
 
-	// Whether the target supports shadow / outline (everything except the speaker-name targets).
+	// Whether the target supports the shadow (everything except the speaker-name targets).
 	bool SupportsEffects(std::string_view a_name);
-
-	// Whether the target supports a custom font (HUD, Dialogue and PlayerChoices).
-	bool SupportsFont(std::string_view a_name);
 
 	// Writing to SubtitleScaler.log. When switched off, nothing more is written to the log file.
 	bool IsLogEnabled();

@@ -90,26 +90,6 @@ namespace
 		}
 	}
 
-	// Black outline. aiSize 1-4. Works for "HUD", "Dialogue" and "PlayerChoices".
-	void SetTargetOutline(RE::StaticFunctionTag*, std::string_view a_name, bool a_enabled, std::int32_t a_size)
-	{
-		if (const auto e = Settings::Find(a_name); e && Settings::SupportsEffects(e->name)) {
-			e->outlineEnabled = a_enabled;
-			e->outlineSize = std::clamp(a_size, 1, 4);
-			Subtitles::Apply(e, false);
-		}
-	}
-
-	// Font name from the game's font configuration, for example "$EverywhereBoldFont". Empty = original font.
-	// Works for "HUD", "Dialogue" and "PlayerChoices".
-	void SetTargetFont(RE::StaticFunctionTag*, std::string_view a_name, std::string_view a_font)
-	{
-		if (const auto e = Settings::Find(a_name); e && Settings::SupportsFont(e->name)) {
-			e->SetFont(std::string(a_font));
-			Subtitles::Apply(e, false);
-		}
-	}
-
 	void Reapply(RE::StaticFunctionTag*)
 	{
 		Subtitles::ApplyAll(true);
@@ -135,8 +115,6 @@ namespace Papyrus
 		a_vm->RegisterFunction("SetTargetColor", kScriptName, SetTargetColor);
 		a_vm->RegisterFunction("GetTargetColor", kScriptName, GetTargetColor);
 		a_vm->RegisterFunction("SetTargetShadow", kScriptName, SetTargetShadow);
-		a_vm->RegisterFunction("SetTargetOutline", kScriptName, SetTargetOutline);
-		a_vm->RegisterFunction("SetTargetFont", kScriptName, SetTargetFont);
 		a_vm->RegisterFunction("SetLogging", kScriptName, SetLogging);
 		a_vm->RegisterFunction("Reapply", kScriptName, Reapply);
 		a_vm->RegisterFunction("ReloadConfig", kScriptName, ReloadConfig);

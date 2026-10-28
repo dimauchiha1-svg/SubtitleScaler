@@ -256,7 +256,7 @@ namespace
 		}
 	}
 
-	// Shadow, outline, font and (for response options) color. Defined below.
+	// Shadow and (for response options) color. Defined below.
 	void StyleTextField(RE::GFxMovieView* a_movie, const EntryPtr& a_entry, RE::GFxValue& a_tf, bool a_on);
 	void StyleChoices(RE::GFxMovieView* a_movie, const EntryPtr& a_entry, bool a_on);
 
@@ -517,81 +517,11 @@ namespace
 		return n;
 	}
 
-	// ---- Text style: shadow / outline (Flash filters), font, and the color of response options ----
+	// ---- Text style: shadow (Flash filter) and the color of response options ----
 	// Everything we change is remembered in members of the text field itself (_ss...), because the field
 	// can outlive our state, and the game rewrites formatting whenever it sets new text.
 
 	constexpr const char* kFxMarker = "_ssFx";
-
-	// Reads the font of the first (or last) character. Empty if unknown or mixed.
-	std::string ReadFieldFont(RE::GFxValue& a_tf, bool a_last)
-	{
-		RE::GFxValue text, fmt, font;
-		std::size_t  len = 0;
-		if (GetMemberSafe(a_tf, "text", text) && text.IsString()) {
-			const std::string s = text.GetString();
-			len = Utf16Length(s, s.size());
-		}
-		bool ok = false;
-		if (len == 0) {
-			ok = a_tf.Invoke("getTextFormat", &fmt, nullptr, 0);
-		} else {
-			const RE::GFxValue args[2] = { RE::GFxValue(static_cast<double>(a_last ? len - 1 : 0)), RE::GFxValue(static_cast<double>(a_last ? len : 1)) };
-			ok = a_tf.Invoke("getTextFormat", &fmt, args, 2);
-		}
-		if (ok && IsClip(fmt) && GetMemberSafe(fmt, "font", font) && font.IsString()) {
-			return font.GetString();
-		}
-		return {};
-	}
-
-	// Sets the whole-field text format with a single font.
-	void SetFieldFont(RE::GFxMovieView* a_movie, RE::GFxValue& a_tf, const std::string& a_font)
-	{
-		RE::GFxValue fmt;
-		a_movie->CreateObject(&fmt, "TextFormat");
-		fmt.SetMember("font", RE::GFxValue(a_font.c_str()));
-		a_tf.Invoke("setTextFormat", nullptr, &fmt, 1);
-	}
-
-	void ApplyFont(RE::GFxMovieView* a_movie, const EntryPtr& a_e, RE::GFxValue& a_tf, const std::string& a_font)
-	{
-		RE::GFxValue text, wantStored, readStored, origStored;
-		if (!GetMemberSafe(a_tf, "text", text) || !text.IsString() || text.GetString()[0] == '\0') {
-			return;  // nothing to format yet
-		}
-		const bool hasWant = GetMemberSafe(a_tf, "_ssFontWant", wantStored) && wantStored.IsString();
-		const bool hasOrig = GetMemberSafe(a_tf, "_ssOrigFont", origStored) && origStored.IsString();
-
-		if (a_font.empty()) {
-			// Back to the original font (only if we changed it).
-			if (hasWant && hasOrig && origStored.GetString()[0] != '\0') {
-				SetFieldFont(a_movie, a_tf, origStored.GetString());
-			}
-			if (hasWant) {
-				a_tf.SetMember("_ssFontWant", RE::GFxValue(""));
-				a_tf.SetMember("_ssFontRead", RE::GFxValue(""));
-			}
-			return;
-		}
-
-		const std::string now = ReadFieldFont(a_tf, false) + "|" + ReadFieldFont(a_tf, true);
-		if (hasWant && a_font == wantStored.GetString() && GetMemberSafe(a_tf, "_ssFontRead", readStored) && readStored.IsString() &&
-			now == readStored.GetString()) {
-			return;  // nothing changed since we set the font
-		}
-
-		if (!hasOrig) {
-			a_tf.SetMember("_ssOrigFont", RE::GFxValue(ReadFieldFont(a_tf, false).c_str()));
-		}
-		SetFieldFont(a_movie, a_tf, a_font);
-		const std::string after = ReadFieldFont(a_tf, false) + "|" + ReadFieldFont(a_tf, true);
-		a_tf.SetMember("_ssFontWant", RE::GFxValue(a_font.c_str()));
-		a_tf.SetMember("_ssFontRead", RE::GFxValue(after.c_str()));
-		if (!a_e->ui.loggedStyle) {
-			spdlog::info("[{}] font '{}' applied (the text field reports '{}')", a_e->name, a_font, after);
-		}
-	}
 
 	bool CreateFilter(RE::GFxMovieView* a_movie, RE::GFxValue& a_out, std::initializer_list<const char*> a_classNames, const RE::GFxValue* a_args,
 		std::uint32_t a_numArgs)
@@ -607,21 +537,16 @@ namespace
 		return false;
 	}
 
-	// Shadow = DropShadowFilter, outline = black GlowFilter. Both replace the filters the game put on the field;
-	// the original ones come back when the effects are turned off.
+	// The shadow is a DropShadowFilter. It replaces the filters the game put on the field;
+	// the original ones come back when the shadow is turned off.
 	void ApplyFilters(RE::GFxMovieView* a_movie, const EntryPtr& a_e, RE::GFxValue& a_tf, bool a_on)
 	{
 		const bool shadow = a_on && a_e->shadowEnabled.load();
-		const bool outline = a_on && a_e->outlineEnabled.load();
 		const int  strength = a_e->shadowStrength.load();
-		const int  size = a_e->outlineSize.load();
 
 		std::string want;
 		if (shadow) {
-			want += std::format("s{}", strength);
-		}
-		if (outline) {
-			want += std::format("o{}", size);
+			want = std::format("s{}", strength);
 		}
 
 		RE::GFxValue cur;
@@ -656,18 +581,6 @@ namespace
 		a_movie->CreateArray(&list);
 		bool ok = true;
 
-		if (outline) {
-			const double blur = 1.0 + size;
-			// GlowFilter(color, alpha, blurX, blurY, strength, quality)
-			const RE::GFxValue args[6] = { RE::GFxValue(0.0), RE::GFxValue(1.0), RE::GFxValue(blur), RE::GFxValue(blur),
-				RE::GFxValue(4.0 + 2.0 * size), RE::GFxValue(2.0) };
-			RE::GFxValue glow;
-			if (CreateFilter(a_movie, glow, { "flash.filters.GlowFilter", "GlowFilter" }, args, 6)) {
-				list.PushBack(glow);
-			} else {
-				ok = false;
-			}
-		}
 		if (shadow) {
 			// DropShadowFilter(distance, angle, color, alpha, blurX, blurY, strength, quality)
 			const double alpha = std::clamp(strength / 100.0, 0.0, 1.0);
@@ -685,25 +598,21 @@ namespace
 		if (!ok) {
 			if (!a_e->ui.warnedFilters) {
 				a_e->ui.warnedFilters = true;
-				spdlog::warn("[{}] could not create the filter object (flash.filters.*): shadow/outline are not available in this interface", a_e->name);
+				spdlog::warn("[{}] could not create the filter object (flash.filters.*): the shadow is not available in this interface", a_e->name);
 			}
 			return;
 		}
 		a_tf.SetMember("filters", list);
 		if (!a_e->ui.loggedStyle) {
-			spdlog::info("[{}] effects applied: shadow {}, outline {}", a_e->name, shadow ? std::format("{}", strength) : "off",
-				outline ? std::format("{}", size) : "off");
+			spdlog::info("[{}] shadow applied: strength {}", a_e->name, strength);
 		}
 	}
 
-	// Filters and font of one text field.
+	// Shadow of one text field.
 	void StyleTextField(RE::GFxMovieView* a_movie, const EntryPtr& a_e, RE::GFxValue& a_tf, bool a_on)
 	{
 		ApplyFilters(a_movie, a_e, a_tf, a_on);
-		if (Settings::SupportsFont(a_e->name)) {
-			ApplyFont(a_movie, a_e, a_tf, a_on ? a_e->GetFont() : std::string());
-		}
-		const bool any = a_on && (a_e->shadowEnabled.load() || a_e->outlineEnabled.load() || !a_e->GetFont().empty());
+		const bool any = a_on && a_e->shadowEnabled.load();
 		a_e->ui.loggedStyle = a_e->ui.loggedStyle || any;
 		a_e->ui.styleApplied = any || a_e->ui.styleApplied;
 	}
@@ -772,7 +681,7 @@ namespace
 		}
 	}
 
-	// Shadow, outline, font and color for every option of the player's response list.
+	// Shadow and color for every option of the player's response list.
 	void StyleChoices(RE::GFxMovieView* a_movie, const EntryPtr& a_e, bool a_on)
 	{
 		const int color = a_on ? a_e->color.load() : -1;
@@ -826,7 +735,7 @@ namespace
 				continue;
 			}
 			const bool isChoices = e->name == "PlayerChoices";
-			const bool wants = e->shadowEnabled.load() || e->outlineEnabled.load() || !e->GetFont().empty() || (isChoices && e->color.load() >= 0);
+			const bool wants = e->shadowEnabled.load() || (isChoices && e->color.load() >= 0);
 			if (!wants) {
 				continue;
 			}

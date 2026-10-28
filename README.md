@@ -52,7 +52,7 @@ If SKSE Menu Framework is installed, a **SubtitleScaler → Subtitles** section 
 - **Offset X / Y** fields;
 - a **Max width** slider;
 - a **Custom text color** checkbox with a color picker;
-- **Text shadow** (with a strength slider) and **Black outline** (with a size slider) checkboxes, and a **Font** field with preset buttons (`HUD`, `Dialogue` and `PlayerChoices`);
+- a **Text shadow** checkbox with a strength slider (`HUD`, `Dialogue` and `PlayerChoices`);
 - an **Original size** button (returns to 100% and zero offset).
 
 At the top of the page there is a **Write log file** checkbox. Changes are applied immediately. At the bottom there are two buttons: **Save to INI** (writes the values to `SubtitleScaler.ini`, comments in the file are preserved) and **Reload from INI** (re-reads the file). If the framework is not installed, the plugin works as before and can be configured through the INI.
@@ -71,13 +71,11 @@ Each `[Name]` section describes one interface element. The parameters are the sa
 | `MaxWidth` | Maximum visible width of the element (the Skyrim stage is 1280 wide). If the enlarged text is wider, long lines wrap onto new lines instead of running off the screen edge. `0` = no limit. Default is `1100` for subtitles |
 | `Color` | Text color as `RRGGBB` (for example `FFFF00` = yellow). Empty = keep the original color. For `[PlayerChoices]` the option under the cursor keeps the game's highlight color |
 | `Shadow`, `ShadowStrength` | `[HUD]`, `[Dialogue]`, `[PlayerChoices]` only. `Shadow=1` draws a drop shadow under the text; `ShadowStrength` is its intensity, 0–100 (default 60). The shadow replaces any shadow the game already draws for that text. `Shadow=0` keeps the game's own look |
-| `Outline`, `OutlineSize` | Same targets. `Outline=1` draws a thin black outline around the letters (thickness 1–4, default 1). Works together with the shadow |
-| `Font` | Same targets. A font name from the game's font configuration, for example `$EverywhereBoldFont`, `$EverywhereMediumFont`, `$EverywhereFont`, `$ConsoleFont`, `$HandwrittenFont`, `$SkyrimBooks`. Any font defined in your interface's `fontconfig` file works. Empty = keep the original font |
 | `Anchor` | `left` or `center`. When enlarged, the element either grows to the right from its left edge (`left`) or stays in place, centered (`center`). Default for `[Dialogue]` is `center` |
 | `Menu` | Internal name of the menu that contains the element |
 | `Paths` | Path to the element inside the menu (several separated by `|`, the first one found is used) |
 
-To enlarge the player's response options, set `Enabled=1` in the `[PlayerChoices]` section and choose a `Scale`. The effects, font and color only apply while the section is enabled; use `Scale=100` if you do not want to change the size.
+To enlarge the player's response options, set `Enabled=1` in the `[PlayerChoices]` section and choose a `Scale`. The shadow and color only apply while the section is enabled; use `Scale=100` if you do not want to change the size.
 
 The `[General]` section has one option, `Logging` (`1` = write `SubtitleScaler.log`, `0` = write nothing).
 
@@ -93,8 +91,6 @@ SubtitleScaler.SetOffset("HUD", 0.0, -40.0)             ; move subtitles up
 SubtitleScaler.SetTargetColor("HUD", 16776960)          ; yellow subtitles (0xFFFF00 as a decimal number)
 SubtitleScaler.SetTargetColor("HUD", -1)                ; back to the original color
 SubtitleScaler.SetTargetShadow("HUD", true, 80)         ; strong drop shadow on world subtitles
-SubtitleScaler.SetTargetOutline("Dialogue", true, 2)    ; black outline, thickness 2
-SubtitleScaler.SetTargetFont("PlayerChoices", "$EverywhereBoldFont")
 SubtitleScaler.SetLogging(false)                        ; stop writing to the log
 Float s = SubtitleScaler.GetScale("Dialogue")
 SubtitleScaler.ReloadConfig()                           ; re-read the INI
@@ -118,9 +114,9 @@ Plugin log: `Documents\My Games\Skyrim Special Edition\SKSE\SubtitleScaler.log` 
 - `[DialogueName]` is a separate element of the dialogue window, so it supports `Scale`, `Color`, `OffsetX` and `OffsetY`.
 - `[HUDName]` is part of the subtitle text in the world (the game draws "Name: line" as one text with separate font spans), so only `Scale` and `Color` work for it. The position of the name cannot be changed separately; use `[HUD]` to move the whole subtitle. Because the game rewrites the text on every new subtitle, the format is re-applied every frame while a subtitle is shown.
 
-## Shadow, outline and font
+## Shadow
 
-These effects are drawn with Flash filters (a drop shadow and a black glow) put on the subtitle's text field, and the font is set with a text format that is re-applied every frame, because the game resets formatting whenever it sets new text. If the interface does not support filters, the log shows `could not create the filter object`. The font name must exist in the game's font configuration (`fontconfig_en.txt` and the font library); an unknown name is silently ignored by the game. When an effect is switched off, the original filters of the text field are restored.
+The shadow is a Flash drop-shadow filter put on the subtitle's text field. If the interface does not support filters, the log shows `could not create the filter object`. When the shadow is switched off, the original filters of the text field are restored.
 
 ## Limitations
 

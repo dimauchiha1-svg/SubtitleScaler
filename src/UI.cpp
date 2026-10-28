@@ -152,7 +152,7 @@ namespace
 				}
 			}
 
-			// Shadow, outline and font
+			// Shadow
 			if (Settings::SupportsEffects(e->name)) {
 				bool shadow = e->shadowEnabled.load();
 				if (ImGuiMCP::Checkbox("Text shadow (replaces the game's own shadow)", &shadow)) {
@@ -165,43 +165,6 @@ namespace
 						e->shadowStrength = strength;
 						changed = true;
 					}
-				}
-
-				bool outline = e->outlineEnabled.load();
-				if (ImGuiMCP::Checkbox("Black outline (can be combined with the shadow)", &outline)) {
-					e->outlineEnabled = outline;
-					changed = true;
-				}
-				if (outline) {
-					int size = e->outlineSize.load();
-					if (ImGuiMCP::SliderInt("Outline size", &size, 1, 4)) {
-						e->outlineSize = size;
-						changed = true;
-					}
-				}
-			}
-
-			if (Settings::SupportsFont(e->name)) {
-				char buf[64] = {};
-				std::snprintf(buf, sizeof(buf), "%s", e->GetFont().c_str());
-				if (ImGuiMCP::InputText("Font (empty = original)", buf, sizeof(buf))) {
-					e->SetFont(buf);
-					changed = true;
-				}
-				static constexpr const char* kFonts[] = { "$EverywhereFont", "$EverywhereMediumFont", "$EverywhereBoldFont", "$ConsoleFont",
-					"$HandwrittenFont", "$SkyrimBooks" };
-				for (int i = 0; i < 6; ++i) {
-					if (i % 3 != 0) {
-						ImGuiMCP::SameLine();
-					}
-					if (ImGuiMCP::Button(kFonts[i])) {
-						e->SetFont(kFonts[i]);
-						changed = true;
-					}
-				}
-				if (ImGuiMCP::Button("Original font")) {
-					e->SetFont({});
-					changed = true;
 				}
 			}
 

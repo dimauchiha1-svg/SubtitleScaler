@@ -112,12 +112,6 @@ namespace Settings
 		return n == "hud" || n == "dialogue" || n == "playerchoices";
 	}
 
-	bool SupportsFont(std::string_view a_name)
-	{
-		const auto n = Lower(std::string(a_name));
-		return n == "hud" || n == "dialogue" || n == "playerchoices";
-	}
-
 	namespace
 	{
 		std::atomic<bool> g_logEnabled{ true };
@@ -211,11 +205,6 @@ namespace Settings
 			if (SupportsEffects(e->name)) {
 				kv.emplace_back("Shadow", e->shadowEnabled.load() ? "1" : "0");
 				kv.emplace_back("ShadowStrength", std::to_string(e->shadowStrength.load()));
-				kv.emplace_back("Outline", e->outlineEnabled.load() ? "1" : "0");
-				kv.emplace_back("OutlineSize", std::to_string(e->outlineSize.load()));
-			}
-			if (SupportsFont(e->name)) {
-				kv.emplace_back("Font", e->GetFont());
 			}
 			sections.emplace_back(e->name, std::move(kv));
 		}
@@ -383,14 +372,6 @@ namespace Settings
 				if (ParseFloat(val, f)) {
 					current->shadowStrength = std::clamp(static_cast<int>(f), 0, 100);
 				}
-			} else if (key == "outline") {
-				current->outlineEnabled = ParseBool(val);
-			} else if (key == "outlinesize") {
-				if (ParseFloat(val, f)) {
-					current->outlineSize = std::clamp(static_cast<int>(f), 1, 4);
-				}
-			} else if (key == "font") {
-				current->SetFont(val);
 			} else if (key == "anchor") {
 				current->centerAnchor = (Lower(val) == "center");
 			} else if (key == "menu") {

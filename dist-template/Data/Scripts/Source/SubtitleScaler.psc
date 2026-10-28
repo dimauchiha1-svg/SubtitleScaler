@@ -35,13 +35,6 @@ Int Function GetTargetColor(String asName) global native
 ; Drop shadow under the text. aiStrength is 0-100. Works for "HUD", "Dialogue" and "PlayerChoices".
 Function SetTargetShadow(String asName, Bool abEnabled, Int aiStrength) global native
 
-; Black outline around the letters. aiSize is 1-4. Works for "HUD", "Dialogue" and "PlayerChoices".
-Function SetTargetOutline(String asName, Bool abEnabled, Int aiSize) global native
-
-; Font from the game's font configuration, for example "$EverywhereBoldFont". An empty string restores the original font.
-; Works for "HUD", "Dialogue" and "PlayerChoices".
-Function SetTargetFont(String asName, String asFont) global native
-
 ; Switch writing to SubtitleScaler.log on or off.
 Function SetLogging(Bool abEnabled) global native
 
