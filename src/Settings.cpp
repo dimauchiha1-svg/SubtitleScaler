@@ -305,15 +305,16 @@ namespace Settings
 				if (name.empty()) {
 					continue;
 				}
-				current = Find(name);
-				if (!current) {
+				inGeneral = Lower(name) == "general";
+				current = inGeneral ? nullptr : Find(name);
+				if (!current && !inGeneral) {
 					spdlog::warn("Unknown INI section [{}] skipped", name);
 				}
 				continue;
 			}
 
 			// Skip keys of an unknown section.
-			if (!current) {
+			if (!current && !inGeneral) {
 				continue;
 			}
 

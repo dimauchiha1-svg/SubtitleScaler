@@ -626,8 +626,31 @@ namespace
 	};
 	constexpr int kMaxChoices = 32;
 
+	// Color of the last character of an option (the part after the "[Plugin] " tag), 0xRRGGBB. false if unknown.
+	bool ReadChoiceColor(RE::GFxValue& a_tf, int& a_rgb)
+	{
+		RE::GFxValue text, fmt, col;
+		if (!GetMemberSafe(a_tf, "text", text) || !text.IsString() || text.GetString()[0] == '\0') {
+			return false;
+		}
+		const std::string s = text.GetString();
+		const auto        total = Utf16Length(s, s.size());
+		const RE::GFxValue probe[2] = { RE::GFxValue(static_cast<double>(total - 1)), RE::GFxValue(static_cast<double>(total)) };
+		if (a_tf.Invoke("getTextFormat", &fmt, probe, 2) && IsClip(fmt) && GetMemberSafe(fmt, "color", col) && col.IsNumber()) {
+			a_rgb = static_cast<int>(col.GetNumber()) & 0xFFFFFF;
+			return true;
+		}
+		return false;
+	}
+
+	int Luma(int a_rgb)
+	{
+		return (((a_rgb >> 16) & 0xFF) * 299 + ((a_rgb >> 8) & 0xFF) * 587 + (a_rgb & 0xFF) * 114) / 1000;
+	}
+
 	// Colors one response option. The tag "[Plugin] " in front of the text (DialogueSourceTags) keeps its own color.
-	void ColorChoice(RE::GFxMovieView* a_movie, const EntryPtr& a_e, RE::GFxValue& a_tf, int a_color, bool a_selected)
+	// a_keepGame: the option is the selected one, so the game's own highlight color stays.
+	void ColorChoice(RE::GFxMovieView* a_movie, const EntryPtr& a_e, RE::GFxValue& a_tf, int a_color, bool a_keepGame)
 	{
 		RE::GFxValue text;
 		if (!GetMemberSafe(a_tf, "text", text) || !text.IsString() || text.GetString()[0] == '\0') {
@@ -646,44 +669,50 @@ namespace
 			return;
 		}
 
-		RE::GFxValue cur, fmtNow, curColor, orig;
-		const RE::GFxValue probe[2] = { RE::GFxValue(static_cast<double>(total - 1)), RE::GFxValue(static_cast<double>(total)) };
-		const bool readOk = a_tf.Invoke("getTextFormat", &fmtNow, probe, 2) && IsClip(fmtNow) && GetMemberSafe(fmtNow, "color", curColor) &&
-		                    curColor.IsNumber();
-		const int  curRgb = readOk ? (static_cast<int>(curColor.GetNumber()) & 0xFFFFFF) : -1;
+		int        curRgb = -1;
+		const bool readOk = ReadChoiceColor(a_tf, curRgb);
+		RE::GFxValue orig;
 
-		if (a_color >= 0 && !a_selected) {
+		const auto paint = [&](double a_rgb) {
+			RE::GFxValue fmt;
+			a_movie->CreateObject(&fmt, "TextFormat");
+			fmt.SetMember("color", RE::GFxValue(a_rgb));
+			const RE::GFxValue args[3] = { RE::GFxValue(static_cast<double>(start)), RE::GFxValue(static_cast<double>(total)), fmt };
+			a_tf.Invoke("setTextFormat", nullptr, args, 3);
+		};
+
+		if (a_color >= 0 && !a_keepGame) {
 			if (curRgb == a_color) {
 				return;
 			}
 			if (readOk && !GetMemberSafe(a_tf, "_ssOrigColor", orig)) {
 				a_tf.SetMember("_ssOrigColor", RE::GFxValue(static_cast<double>(curRgb)));
 			}
-			RE::GFxValue fmt;
-			a_movie->CreateObject(&fmt, "TextFormat");
-			fmt.SetMember("color", RE::GFxValue(static_cast<double>(a_color)));
-			const RE::GFxValue args[3] = { RE::GFxValue(static_cast<double>(start)), RE::GFxValue(static_cast<double>(total)), fmt };
-			a_tf.Invoke("setTextFormat", nullptr, args, 3);
+			paint(static_cast<double>(a_color));
+			a_tf.SetMember("_ssApplied", RE::GFxValue(static_cast<double>(a_color)));
 			if (!a_e->ui.colorApplied) {
 				a_e->ui.colorApplied = true;
 				spdlog::info("[{}] option color {:06X} applied", a_e->name, a_color & 0xFFFFFF);
 			}
-		} else if (a_color < 0 && !a_selected && GetMemberSafe(a_tf, "_ssOrigColor", orig) && orig.IsNumber()) {
+		} else if (a_color < 0 && GetMemberSafe(a_tf, "_ssOrigColor", orig) && orig.IsNumber()) {
 			// The color was switched off: put the remembered one back.
 			if (curRgb != (static_cast<int>(orig.GetNumber()) & 0xFFFFFF)) {
-				RE::GFxValue fmt;
-				a_movie->CreateObject(&fmt, "TextFormat");
-				fmt.SetMember("color", orig);
-				const RE::GFxValue args[3] = { RE::GFxValue(static_cast<double>(start)), RE::GFxValue(static_cast<double>(total)), fmt };
-				a_tf.Invoke("setTextFormat", nullptr, args, 3);
+				paint(orig.GetNumber());
 			}
 			a_tf.SetMember("_ssOrigColor", RE::GFxValue());
+			a_tf.SetMember("_ssApplied", RE::GFxValue());
 		}
 	}
 
 	// Shadow and color for every option of the player's response list.
+	//
+	// The selected option must stay distinguishable. The game colors the selected option brighter than the others,
+	// so the colors the game writes are observed: of the colors that are not ours, the brighter one is the highlight.
 	void StyleChoices(RE::GFxMovieView* a_movie, const EntryPtr& a_e, bool a_on)
 	{
+		static int s_lumaMin = 1000;  // darkest and brightest game color seen on the options
+		static int s_lumaMax = -1;
+
 		const int color = a_on ? a_e->color.load() : -1;
 		for (const auto* path : kChoiceListPaths) {
 			RE::GFxValue list;
@@ -695,28 +724,42 @@ namespace
 				continue;
 			}
 
-			// The option under the cursor keeps the game's highlight color.
-			int          selected = -1;
-			RE::GFxValue sel;
-			if ((GetMemberSafe(list, "iSelectedIndex", sel) || GetMemberSafe(list, "selectedIndex", sel)) && sel.IsNumber()) {
-				selected = static_cast<int>(sel.GetNumber());
-			} else if (color >= 0 && !a_e->ui.warnedSelection) {
-				a_e->ui.warnedSelection = true;
-				spdlog::info("[{}] could not tell which option is selected: all options get the custom color", a_e->name);
-			}
-
+			struct Item
+			{
+				RE::GFxValue tf;
+				int          rgb = -1;
+				bool         known = false;
+				bool         ours = false;
+			};
+			std::vector<Item> items;
 			for (int i = 0; i < kMaxChoices; ++i) {
 				const std::string name = "Entry" + std::to_string(i);
-				RE::GFxValue      clip, tf;
-				if (!GetMemberSafe(list, name.c_str(), clip) || !GetMemberSafe(clip, "textField", tf)) {
+				RE::GFxValue      clip;
+				Item              it;
+				if (!GetMemberSafe(list, name.c_str(), clip) || !GetMemberSafe(clip, "textField", it.tf)) {
 					break;
 				}
-				StyleTextField(a_movie, a_e, tf, a_on);
+				StyleTextField(a_movie, a_e, it.tf, a_on);
 
-				RE::GFxValue idx;
-				const bool   isSelected = selected >= 0 && GetMemberSafe(clip, "itemIndex", idx) && idx.IsNumber() &&
-				                        static_cast<int>(idx.GetNumber()) == selected;
-				ColorChoice(a_movie, a_e, tf, color, isSelected);
+				RE::GFxValue applied;
+				it.known = ReadChoiceColor(it.tf, it.rgb);
+				it.ours = it.known && GetMemberSafe(it.tf, "_ssApplied", applied) && applied.IsNumber() &&
+				          (static_cast<int>(applied.GetNumber()) & 0xFFFFFF) == it.rgb;
+				if (it.known && !it.ours) {
+					s_lumaMin = std::min(s_lumaMin, Luma(it.rgb));
+					s_lumaMax = std::max(s_lumaMax, Luma(it.rgb));
+				}
+				items.push_back(std::move(it));
+			}
+
+			const bool haveRange = s_lumaMax - s_lumaMin >= 24;
+			if (color >= 0 && haveRange && !a_e->ui.warnedSelection) {
+				a_e->ui.warnedSelection = true;
+				spdlog::info("[{}] the game colors options from brightness {} (normal) to {} (selected)", a_e->name, s_lumaMin, s_lumaMax);
+			}
+			for (auto& it : items) {
+				const bool selected = it.known && !it.ours && haveRange && Luma(it.rgb) >= (s_lumaMin + s_lumaMax) / 2;
+				ColorChoice(a_movie, a_e, it.tf, color, selected);
 			}
 			return;
 		}
