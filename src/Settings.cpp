@@ -196,6 +196,7 @@ namespace Settings
 				{ "OffsetX", fmt(e->offsetX.load()) },
 				{ "OffsetY", fmt(e->offsetY.load()) },
 				{ "MaxWidth", fmt(e->maxWidth.load()) },
+				{ "Anchor", e->centerAnchor.load() ? "center" : "left" },
 				{ "Color", e->color.load() >= 0 ? [&] {
 					char buf[8];
 					std::snprintf(buf, sizeof(buf), "%06X", e->color.load() & 0xFFFFFF);

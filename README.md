@@ -51,6 +51,7 @@ If SKSE Menu Framework is installed, a **SubtitleScaler → Subtitles** section 
 - a **Scale (%)** slider (50–400);
 - **Offset X / Y** fields;
 - a **Max width** slider;
+- a **Keep centered when enlarged** checkbox (the `Anchor` setting);
 - a **Custom text color** checkbox with a color picker;
 - a **Text shadow** checkbox with a strength slider (`HUD`, `Dialogue` and `PlayerChoices`);
 - an **Original size** button (returns to 100% and zero offset).

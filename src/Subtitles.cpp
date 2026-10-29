@@ -359,6 +359,32 @@ namespace
 				}
 			}
 
+			// Diagnostics, once per menu opening: where the element ended up and how its text is aligned.
+			if (on && !st.loggedGeometry) {
+				st.loggedGeometry = true;
+				const auto num = [](RE::GFxValue& a_obj, const char* a_name) {
+					RE::GFxValue v;
+					return (a_obj.GetMember(a_name, &v) && v.IsNumber()) ? v.GetNumber() : -99999.0;
+				};
+				std::string  align = "?";
+				std::string  autoSz = "?";
+				RE::GFxValue tfv;
+				if (GetTextFieldValue(a_entry, clip, tfv)) {
+					RE::GFxValue fmt, al, as;
+					if (tfv.Invoke("getTextFormat", &fmt, nullptr, 0) && IsClip(fmt) && GetMemberSafe(fmt, "align", al) && al.IsString()) {
+						align = al.GetString();
+					}
+					if (GetMemberSafe(tfv, "autoSize", as) && as.IsString()) {
+						autoSz = as.GetString();
+					}
+				}
+				RE::GFxValue parent;
+				const double parentX = clip.GetMember("_parent", &parent) && IsClip(parent) ? num(parent, "_x") : -99999.0;
+				spdlog::info("[{}] geometry: x={} (original {}), width={} (original {}), xscale={}, anchor={}, text align={}, autoSize={}, parent x={}",
+					a_entry->name, num(clip, "_x"), *st.baseX, num(clip, "_width"), baseW, num(clip, "_xscale"),
+					a_entry->centerAnchor.load() ? "center" : "left", align, autoSz, parentX);
+			}
+
 			if (std::abs(st.lastLoggedScale - target) > 0.001) {
 				spdlog::info("[{}] scale {}% applied to '{}' (width at 100%: {}, width limit: {})",
 					a_entry->name, target, path, baseW, limit ? "enabled" : "no");

@@ -130,6 +130,12 @@ namespace
 				changed = true;
 			}
 
+			bool center = e->centerAnchor.load();
+			if (e->name != "HUDName" && ImGuiMCP::Checkbox("Keep centered when enlarged", &center)) {
+				e->centerAnchor = center;
+				changed = true;
+			}
+
 			// Custom text color
 			{
 				bool useColor = e->color.load() >= 0;
