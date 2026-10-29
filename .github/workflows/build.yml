@@ -78,7 +78,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist/Data/SKSE/Plugins | Out-Null
           New-Item -ItemType Directory -Force -Path dist/Data/Scripts/Source | Out-Null
           Copy-Item $dll.FullName dist/Data/SKSE/Plugins/
-          Copy-Item dist-template/Data/SKSE/Plugins/SubtitleScaler.ini dist/Data/SKSE/Plugins/
+          Copy-Item dist-template/Data/SKSE/Plugins/SubtitleScaler_Default.ini dist/Data/SKSE/Plugins/
           Copy-Item dist-template/Data/Scripts/Source/SubtitleScaler.psc dist/Data/Scripts/Source/
 
       - name: Upload mod
