@@ -6,6 +6,7 @@
 #include <atomic>
 #include <cctype>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -13,6 +14,7 @@
 namespace
 {
 	constexpr auto kIniPath = "Data/SKSE/Plugins/SubtitleScaler.ini";
+	constexpr auto kDefaultIniPath = "Data/SKSE/Plugins/SubtitleScaler_Default.ini";
 
 	std::string Trim(const std::string& a_str)
 	{
@@ -282,6 +284,20 @@ namespace Settings
 
 	void Load()
 	{
+		// The archive ships only SubtitleScaler_Default.ini, so updating the mod never overwrites the user's
+		// settings. The working INI is created from it on the first start.
+		{
+			std::error_code ec;
+			if (!std::filesystem::exists(kIniPath, ec) && std::filesystem::exists(kDefaultIniPath, ec)) {
+				std::filesystem::copy_file(kDefaultIniPath, kIniPath, ec);
+				if (ec) {
+					spdlog::warn("Could not create {} from {}: {}", kIniPath, kDefaultIniPath, ec.message());
+				} else {
+					spdlog::info("Created {} from {}", kIniPath, kDefaultIniPath);
+				}
+			}
+		}
+
 		std::ifstream file(kIniPath);
 		if (!file.is_open()) {
 			spdlog::warn("INI not found ({}), using default values", kIniPath);

@@ -83,6 +83,7 @@ namespace Settings
 			bool                  warnedNoTf = false;
 			double                lastLoggedScale = -1.0;
 			bool                  loggedMissing = false;
+			bool                  loggedGeometry = false;
 
 			// Text color (see color)
 			std::optional<double> origColor;  // original textColor, remembered before the first change

@@ -38,8 +38,10 @@ Copy the contents of the `Data` folder from the artifact into the game's `Data` 
 
 ```
 Data/SKSE/Plugins/SubtitleScaler.dll
-Data/SKSE/Plugins/SubtitleScaler.ini
+Data/SKSE/Plugins/SubtitleScaler_Default.ini
 ```
+
+On the first start the plugin creates `SubtitleScaler.ini` from `SubtitleScaler_Default.ini`. The archive does not contain `SubtitleScaler.ini` itself, so updating the mod never overwrites your settings. If you want to start over, delete `SubtitleScaler.ini`. New options added in later versions simply use their default values until you save the settings once.
 
 Do not forget to enable subtitles in the game settings (**Settings → Display → Subtitles**).
 
