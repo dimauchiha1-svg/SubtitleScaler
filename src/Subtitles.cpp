@@ -140,12 +140,16 @@ namespace
 		}
 
 		if (st.tfName == ".") {
-			// The element itself: width is set in visible units (scale included).
+			// The element itself: see the note on units below.
 			if (a_limit) {
 				a_clip.SetMember("wordWrap", RE::GFxValue(true));
 				a_clip.SetMember("multiline", RE::GFxValue(true));
 			}
-			a_clip.SetMember("_width", RE::GFxValue(a_limit ? a_maxW : a_visualW));
+			// For a text field Scaleform takes the new width in LOCAL units (the scale is applied on top of it): the log
+			// showed width 1650 after setting 1100 at 150%. So the value is divided by the scale; the original local
+			// width is a_visualW * 100 / a_target.
+			const double local = a_limit ? a_maxW * 100.0 / a_target : a_visualW * 100.0 / a_target;
+			a_clip.SetMember("_width", RE::GFxValue(local));
 
 			// Safeguard: if setting the width changed the text scale, restore the scale.
 			RE::GFxValue xs;
@@ -783,9 +787,16 @@ namespace
 				a_e->ui.warnedSelection = true;
 				spdlog::info("[{}] the game colors options from brightness {} (normal) to {} (selected)", a_e->name, s_lumaMin, s_lumaMax);
 			}
+			// The game shows already chosen options dimmer. The custom color is dimmed by the same ratio, so they stay distinguishable.
+			int paint = color;
+			if (color >= 0 && haveRange) {
+				const double f = std::clamp(static_cast<double>(s_lumaMin) / static_cast<double>(s_lumaMax), 0.25, 1.0);
+				const auto   ch = [&](int a_shift) { return std::clamp(static_cast<int>(((color >> a_shift) & 0xFF) * f + 0.5), 0, 255); };
+				paint = (ch(16) << 16) | (ch(8) << 8) | ch(0);
+			}
 			for (auto& it : items) {
 				const bool selected = it.known && !it.ours && haveRange && Luma(it.rgb) >= (s_lumaMin + s_lumaMax) / 2;
-				ColorChoice(a_movie, a_e, it.tf, color, selected);
+				ColorChoice(a_movie, a_e, it.tf, paint, selected);
 			}
 			return;
 		}
