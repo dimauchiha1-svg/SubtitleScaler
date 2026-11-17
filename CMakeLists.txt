@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(SubtitleScaler
-    VERSION 1.0.0
+    VERSION 1.0.1
     LANGUAGES CXX
 )
 
@@ -17,10 +17,25 @@ option(SUBTITLESCALER_DUMP "Log the menu structure when a subtitle element is no
 option(SUBTITLESCALER_MENU "In-game settings menu for SKSE Menu Framework" ON)
 set(MENU_API_DIR "" CACHE PATH "Folder with a clone of https://github.com/QTR-Modding/SKSE-Menu-Framework-3-API")
 
-find_package(CommonLibSSE CONFIG REQUIRED)
+# CommonLibSSE NG, alandtse fork (https://github.com/alandtse/CommonLibSSE-NG, branch "ng"). The older
+# colorglass / CharmedBaryon port cannot read the Address Library V5 files of Skyrim 1.7.x, so a plugin
+# built on it does not load there. This fork reads the old formats (SE 1.5.97, AE 1.6.x) and the V5 one
+# (1.7.x), so one DLL works on all of them.
+# The workflow clones it into lib/commonlibsse-ng; for a local build do the same (see the README).
+set(COMMONLIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lib/commonlibsse-ng" CACHE PATH "Folder with a clone of CommonLibSSE-NG (alandtse, branch ng)")
+if(NOT EXISTS "${COMMONLIB_DIR}/CMakeLists.txt")
+    message(FATAL_ERROR "CommonLibSSE-NG was not found in '${COMMONLIB_DIR}'. Clone https://github.com/alandtse/CommonLibSSE-NG there (git clone --recurse-submodules --branch v16.7.0).")
+endif()
+set(ENABLE_SKYRIM_SE ON  CACHE BOOL "" FORCE)
+set(ENABLE_SKYRIM_AE ON  CACHE BOOL "" FORCE)   # AE 1.6.x and 1.7.x
+set(ENABLE_SKYRIM_VR OFF CACHE BOOL "" FORCE)   # VR is not supported by this mod
+set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(SKSE_SUPPORT_PATCH_SAFETY OFF CACHE BOOL "" FORCE)   # needs a downloaded helper; the mod patches no code
+set(COMMONLIB_ENABLE_IPO OFF CACHE BOOL "" FORCE)        # faster build, same result
+add_subdirectory("${COMMONLIB_DIR}" commonlibsse-ng)
 
 # add_commonlibsse_plugin creates the DLL, links CommonLibSSE and generates
-# SKSEPlugin_Version / SKSEPlugin_Query (Address Library, works on SE and AE).
+# the plugin declaration (SKSEPlugin_Version / SKSEPlugin_Query) with Address Library support.
 add_commonlibsse_plugin(${PROJECT_NAME}
     AUTHOR "SubtitleScaler"
     SOURCES

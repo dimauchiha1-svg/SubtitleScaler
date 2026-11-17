@@ -1,6 +1,6 @@
 # SubtitleScaler: an SKSE mod that enlarges subtitles
 
-An SKSE plugin for Skyrim Special Edition and Anniversary Edition (a single DLL works on SE 1.5.97 and all AE 1.6.x versions through Address Library).
+An SKSE plugin for Skyrim Special Edition and Anniversary Edition. A single DLL is built for SE 1.5.97, AE 1.6.x and AE 1.7.x (1.7.104) through Address Library; 1.7.x needs SKSE 2.3.x and Address Library v13 or newer.
 
 It enlarges subtitles and response options in dialogues. Each element is configured separately: its own size, offset and on/off switch.
 
@@ -12,7 +12,7 @@ It enlarges subtitles and response options in dialogues. Each element is configu
 | `[HUDName]` | The speaker name in world subtitles, with its own scale and color | disabled |
 | `[DialogueName]` | The speaker name in the dialogue window, with its own scale, offset and color | disabled |
 
-> VR is not included in this build: it is built on `commonlibsse-ng-flatrim` (SE + AE).
+> VR is not included in this build (CommonLibSSE NG is built for SE + AE only).
 
 ## Requirements
 
@@ -27,7 +27,7 @@ It enlarges subtitles and response options in dialogues. Each element is configu
 2. Create a new repository (the **New** button) and name it, for example, `SubtitleScaler`.
 3. Upload **all files from this archive, including folders**, and make sure the hidden `.github` folder is included. The easiest way is to drag the contents of the unpacked folder into the browser window on the repository page (**Add file → Upload files**). If `.github` did not upload, create the file via **Add file → Create new file**, type `.github/workflows/build.yml` as the name and paste in the contents of that file.
 4. Open the **Actions** tab. The build starts automatically after the files are uploaded. If it does not, choose **Build SubtitleScaler → Run workflow**.
-5. Wait 10–20 minutes (the first time, vcpkg builds the libraries). When the green check mark appears, open the run and download `SubtitleScaler` from the **Artifacts** section at the bottom.
+5. Wait 20–30 minutes (the first time, vcpkg builds the helper libraries and CommonLibSSE NG is compiled from source). When the green check mark appears, open the run and download `SubtitleScaler` from the **Artifacts** section at the bottom.
 6. The archive contains a ready-made `Data` folder structure.
 
 If the build ends with a red cross, open the step that failed, copy the error text and send it to the author so the code can be fixed. The project was written without the ability to compile it locally, so the first build may need fixes.
@@ -134,6 +134,21 @@ src/Settings.*      INI reading and writing
 src/Subtitles.*     applying the scale to interface elements through Scaleform
 src/Papyrus.*       native functions for Papyrus
 src/UI.*            menu for SKSE Menu Framework
-CMakeLists.txt, vcpkg*.json   build (CommonLibSSE NG via vcpkg)
+CMakeLists.txt, vcpkg*.json   build (CommonLibSSE NG, alandtse fork, cloned into lib/commonlibsse-ng by the workflow)
+tools/verify_dll.py           checks that the DLL declares Address Library V5 (needed on Skyrim 1.7.x)
 .github/workflows/build.yml   build on GitHub Actions
 ```
+
+## Skyrim 1.7.x (1.7.104)
+
+Skyrim 1.7.x uses a new Address Library format (V5), and SKSE 2.3.x only loads plugins that declare it. Plugins built on the older
+CommonLibSSE NG (the colorglass / CharmedBaryon port, `commonlibsse-ng-flatrim` in vcpkg) do not declare it and are skipped by SKSE
+or fail to find their addresses. SubtitleScaler is therefore built on the alandtse fork of CommonLibSSE NG (`v16.7.0`), which
+reads the old formats (SE 1.5.97, AE 1.6.x) and the V5 one. The workflow checks the built DLL with `tools/verify_dll.py` and fails
+if the V5 flag is missing.
+
+To build locally: `git clone --depth 1 --branch v16.7.0 --recurse-submodules https://github.com/alandtse/CommonLibSSE-NG.git lib/commonlibsse-ng`,
+then configure CMake with the vcpkg toolchain as in the workflow.
+
+If the mod does not work on 1.7.x, send `Documents\My Games\Skyrim Special Edition\SKSE\skse64.log` (it says whether SKSE loaded the
+plugin and why not) and `SubtitleScaler.log`.

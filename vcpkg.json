@@ -1,8 +1,16 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
   "name": "subtitle-scaler",
-  "version-string": "1.0.0",
+  "version-string": "1.0.1",
   "dependencies": [
-    "commonlibsse-ng-flatrim"
+    "directxmath",
+    "directxtk",
+    "fmt",
+    "nlohmann-json",
+    "rapidcsv",
+    "simpleini",
+    "spdlog",
+    "toml11",
+    "xbyak"
   ]
 }
