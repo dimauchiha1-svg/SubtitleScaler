@@ -34,6 +34,10 @@ set(SKSE_SUPPORT_PATCH_SAFETY OFF CACHE BOOL "" FORCE)   # needs a downloaded he
 set(COMMONLIB_ENABLE_IPO OFF CACHE BOOL "" FORCE)        # faster build, same result
 add_subdirectory("${COMMONLIB_DIR}" commonlibsse-ng)
 
+# With add_subdirectory the library does not define add_commonlibsse_plugin() itself (it is only loaded through
+# find_package), so include the file that holds it.
+include("${COMMONLIB_DIR}/cmake/CommonLibSSE.cmake")
+
 # add_commonlibsse_plugin creates the DLL, links CommonLibSSE and generates
 # the plugin declaration (SKSEPlugin_Version / SKSEPlugin_Query) with Address Library support.
 add_commonlibsse_plugin(${PROJECT_NAME}
