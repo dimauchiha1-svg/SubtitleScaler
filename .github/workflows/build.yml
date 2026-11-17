@@ -27,6 +27,16 @@ jobs:
         with:
           arch: x64
 
+      # CommonLibSSE NG (alandtse fork). It reads the Address Library V5 files of Skyrim 1.7.x as well as the
+      # older ones (SE 1.5.97, AE 1.6.x), so one DLL works on all of them. The openvr submodule is only
+      # fetched so the library's folder is complete; VR itself is switched off in CMakeLists.txt.
+      - name: Fetch CommonLibSSE NG
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch v16.7.0 --recurse-submodules --shallow-submodules https://github.com/alandtse/CommonLibSSE-NG.git lib/commonlibsse-ng
+          if ($LASTEXITCODE -ne 0) { throw "Could not clone CommonLibSSE-NG" }
+          git -C lib/commonlibsse-ng log -1 --oneline
+
       # The menu only needs the SKSEMenuFramework.h header from the API repository.
       - name: Fetch SKSE Menu Framework API header
         id: api
@@ -62,6 +72,15 @@ jobs:
 
       - name: Build
         run: cmake --build build --config Release
+
+      # Fails the build if the DLL would not load on Skyrim 1.7.x (Address Library V5 flag missing).
+      - name: Verify the plugin declaration
+        shell: pwsh
+        run: |
+          $dll = Get-ChildItem -Path build -Recurse -Filter SubtitleScaler.dll | Select-Object -First 1
+          if (-not $dll) { throw "SubtitleScaler.dll not found" }
+          python tools/verify_dll.py $dll.FullName
+          if ($LASTEXITCODE -ne 0) { throw "The plugin declaration check failed" }
 
       - name: Diagnostics (dependencies of the DLL)
         shell: pwsh
