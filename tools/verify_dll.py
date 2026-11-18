@@ -7,7 +7,8 @@ verify_dll.py - check that a built SKSE plugin declares what Skyrim 1.7.x needs.
 Reads the exported SKSEPlugin_Version structure (standard library only) and fails if
   - the DLL does not export SKSEPlugin_Version (SKSE 2.2+ and 2.3 ignore it then) or SKSEPlugin_Query (SKSE for 1.5.97),
   - the "Address Library V5" flag (versionIndependenceEx bit 1) is missing: SKSE 2.3.x for Skyrim 1.7.x refuses such a plugin,
-  - the "Address Library" flag (versionIndependence bit 0) is missing.
+  - the "Address Library" flag (versionIndependence bit 0) is missing,
+  - fixed compatible game versions are listed without any version-independence flag.
 Layout (from SKSE/Interfaces.h): dataVersion 0x00, pluginVersion 0x04, name 0x08, author 0x108, supportEmail 0x208,
 versionIndependenceEx 0x304, versionIndependence 0x308, compatibleVersions 0x30C, xseMinimum 0x34C.
 """
@@ -78,15 +79,19 @@ def main():
         print("SKSEPlugin_Version: dataVersion=%d plugin='%s' author='%s' pluginVersion=0x%08X" % (data_version, name, author, plugin_version))
         print("  versionIndependenceEx=0x%X (bit0 NoStructUse=%d, bit1 AddressLibraryV5=%d)" % (ex, ex & 1, (ex >> 1) & 1))
         print("  versionIndependence=0x%X (bit0 AddressLibrary=%d, bit1 SignatureScanning=%d, bit2 StructsPost629=%d)" % (ind, ind & 1, (ind >> 1) & 1, (ind >> 2) & 1))
-        print("  compatibleVersions=%s  minimumSKSE=0x%08X" % ([hex(c) for c in compat if c], xse_min))
+        # CommonLibSSE NG fills unused entries with 1.0.0.0 (0x01000000); SKSE does not read the list when a
+        # version-independence flag (Address Library or signature scanning) is set.
+        listed = [c for c in compat if c and c != 0x01000000]
+        print("  compatibleVersions=%s%s  minimumSKSE=0x%08X" % (
+            [hex(c) for c in listed], " (+ default 1.0.0.0 filler, ignored)" if any(c == 0x01000000 for c in compat) else "", xse_min))
         if data_version != 1:
             problems.append("dataVersion is %d, expected 1" % data_version)
         if not (ex & 2):
             problems.append("Address Library V5 flag is NOT set: SKSE 2.3.x (Skyrim 1.7.x) will not load this plugin")
         if not (ind & 1):
             problems.append("Address Library flag is NOT set")
-        if any(compat):
-            problems.append("the plugin lists fixed compatible versions, so it will not load on newer game versions")
+        if listed and not (ind & 3):
+            problems.append("the plugin lists fixed compatible versions and no version-independence flag, so it will not load on newer game versions")
     if problems:
         print("\nFAILED:")
         for p in problems:
